@@ -9,11 +9,11 @@ plugins {
 }
 
 android {
-  namespace = "com.example"
+  namespace = "com.vitualemu.app"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
   defaultConfig {
-    applicationId = "com.aistudio.vitualemu.kmpseq"
+    applicationId = "com.vitualemu.app"
     minSdk = 30
     targetSdk = 36
     versionCode = 1
