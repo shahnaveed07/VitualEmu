@@ -1,0 +1,6 @@
+{
+  "name": "VitualEmu",
+  "description": "Local-first keyboard and mouse mapping utility for Android games with safe input translation, profile management, and macro engine.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

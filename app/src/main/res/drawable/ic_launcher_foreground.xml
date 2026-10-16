@@ -1,0 +1,44 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Glow Ring -->
+    <path
+        android:fillColor="#1538BDF8"
+        android:pathData="M54,54m-38,0a38,38 0 1,1 76,0a38,38 0 1,1 -76,0" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#38BDF8"
+        android:strokeWidth="2.5"
+        android:pathData="M54,54m-32,0a32,32 0 1,1 64,0a32,32 0 1,1 -64,0" />
+    <!-- Gamepad Body / Keycap Motif -->
+    <path
+        android:fillColor="#38BDF8"
+        android:pathData="M38,42h10c2.2,0 4,1.8 4,4v10c0,2.2 -1.8,4 -4,4H38c-2.2,0 -4,-1.8 -4,-4V46c0,-2.2 1.8,-4 4,-4z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M43,45h-1.5l-2,8h1.6l0.4,-1.8h2.2l0.4,1.8h1.6L43.8,45z M41.8,50l0.7,-3.2l0.7,3.2H41.8z" />
+    <!-- Crosshair Target on the right -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#10B981"
+        android:strokeWidth="2"
+        android:pathData="M70,54m-12,0a12,12 0 1,1 24,0a12,12 0 1,1 -24,0" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#10B981"
+        android:strokeWidth="2"
+        android:pathData="M70,38v6 M70,64v6 M54,54h6 M80,54h6" />
+    <!-- Center reticle dot -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M70,54m-2.5,0a2.5,2.5 0 1,1 5,0a2.5,2.5 0 1,1 -5,0" />
+    <!-- Connection Bridge Arc -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#38BDF8"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:pathData="M48,51 C52,48 56,48 60,51" />
+</vector>
