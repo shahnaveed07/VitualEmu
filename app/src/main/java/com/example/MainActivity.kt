@@ -2,38 +2,77 @@ package com.example
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
-import com.example.ui.theme.MyApplicationTheme
+import com.example.poc.ui.BridgeTestScreen
+import com.example.poc.ui.FeasibilityDashboardScreen
+import com.example.poc.ui.FeasibilityViewModel
+import com.example.poc.ui.TestResultsScreen
+import com.example.ui.theme.VitualEmuTheme
+
+enum class PocScreen {
+    DASHBOARD,
+    BRIDGE_TEST,
+    RESULTS
+}
 
 class MainActivity : ComponentActivity() {
-  override fun onCreate(savedInstanceState: Bundle?) {
-    super.onCreate(savedInstanceState)
-    enableEdgeToEdge()
-    setContent {
-      MyApplicationTheme {
-        Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-          Greeting(name = "Android", modifier = Modifier.padding(innerPadding))
+    private val viewModel: FeasibilityViewModel by viewModels()
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        setContent {
+            VitualEmuTheme {
+                PocApp(viewModel = viewModel)
+            }
         }
-      }
     }
-  }
+
+    override fun onPause() {
+        super.onPause()
+        // Safety Requirement: On focus loss or backgrounding, neutralize all active touches
+        viewModel.onFocusLoss()
+    }
 }
 
 @Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-  Text(text = "Hello $name!", modifier = modifier)
-}
+fun PocApp(viewModel: FeasibilityViewModel) {
+    var currentScreen by remember { mutableStateOf(PocScreen.DASHBOARD) }
 
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-  MyApplicationTheme { Greeting("Android") }
+    Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+        when (currentScreen) {
+            PocScreen.DASHBOARD -> {
+                FeasibilityDashboardScreen(
+                    viewModel = viewModel,
+                    onNavigateToBridgeTest = { currentScreen = PocScreen.BRIDGE_TEST },
+                    onNavigateToResults = { currentScreen = PocScreen.RESULTS }
+                )
+            }
+            PocScreen.BRIDGE_TEST -> {
+                BackHandler { currentScreen = PocScreen.DASHBOARD }
+                BridgeTestScreen(
+                    viewModel = viewModel,
+                    onBack = { currentScreen = PocScreen.DASHBOARD }
+                )
+            }
+            PocScreen.RESULTS -> {
+                BackHandler { currentScreen = PocScreen.DASHBOARD }
+                TestResultsScreen(
+                    viewModel = viewModel,
+                    onBack = { currentScreen = PocScreen.DASHBOARD }
+                )
+            }
+        }
+    }
 }
