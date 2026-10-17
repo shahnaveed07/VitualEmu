@@ -1,10 +1,9 @@
 package com.dsc.virtualemu.ui.navigation
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Gamepad
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SportsEsports
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.ui.graphics.vector.ImageVector
 
 enum class MainTab(
@@ -12,9 +11,8 @@ enum class MainTab(
     val title: String,
     val icon: ImageVector
 ) {
-    HOME("home", "Home", Icons.Default.SportsEsports),
-    GAMES("games", "Games", Icons.Default.Gamepad),
-    PROFILES("profiles", "Profiles", Icons.Default.Tune),
+    HOME("home", "Start Game", Icons.Default.SportsEsports),
+    ACCOUNT("profiles", "Account", Icons.Default.Person),
     SETTINGS("settings", "Settings", Icons.Default.Settings)
 }
 
@@ -25,5 +23,6 @@ object NavDestinations {
     const val SETTINGS = "settings"
     const val EDITOR = "editor"
     const val ACTIVATION = "activation"
+    const val PERMISSIONS = "permissions"
     const val TEST_MODE = "test_mode"
 }

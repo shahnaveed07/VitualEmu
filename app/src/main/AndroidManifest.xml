@@ -1,15 +1,48 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
+    >
 
+    <!-- Network access used by the app's existing Firebase/Retrofit-backed components. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Overlay HUD and foreground Play Mode service. -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Shizuku client permission/compatibility metadata. The Shizuku API/provider library must also be added in Gradle for Shizuku activation to work. -->
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+
+    <!-- USB/Bluetooth are optional hardware paths; absence must not block installing the app. -->
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
+    <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+
+    <!--
+        Package visibility for launcher apps and common games.
+        These entries only make package discovery possible; they do not launch games or inject input.
+        The launcher query is what lets the in-app picker find installed launchable apps.
+    -->
     <queries>
+        <!-- Shizuku manager app visibility for activation status checks. -->
         <package android:name="moe.shizuku.privileged.api" />
+
+        <!-- Free Fire family (also present in the reference manifest you shared). -->
+        <package android:name="com.dts.freefireth" />
+        <package android:name="com.dts.freefiremax" />
+
+        <!-- Other common Android games; users can still add other launchable apps from the picker. -->
+        <package android:name="com.pubg.imobile" />
+        <package android:name="com.tencent.ig" />
+        <package android:name="com.activision.callofduty.shooter" />
+        <package android:name="com.roblox.client" />
+        <package android:name="com.mojang.minecraftpe" />
+        <package android:name="com.supercell.clashofclans" />
+        <package android:name="com.supercell.clashroyale" />
+
+        <!-- Query activities capable of appearing in the installed-app picker. -->
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
@@ -24,6 +57,8 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.VitualEmu">
 
+        <!-- VitualEmu uses one Compose Activity for Home, Games, Profiles, Settings,
+             Activation, Mapping Editor and Test Mode; these are routes, not separate Activities. -->
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode"
@@ -36,14 +71,20 @@
             </intent-filter>
         </activity>
 
+        <!-- Only service currently present in VitualEmu source for Play Mode HUD. -->
         <service
             android:name=".runtime.overlay.PlayModeOverlayService"
+            android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="specialUse">
             <property
-                android:name="android.app.property.SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Real-time gaming keyboard and mouse input mapping overlay HUD and emergency input neutralizer" />
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Gaming keyboard and mouse mapping HUD with user-triggered emergency stop" />
         </service>
-    </application>
 
+        <meta-data
+            android:name="moe.shizuku.client.V3_SUPPORT"
+            android:value="true" />
+
+    </application>
 </manifest>
