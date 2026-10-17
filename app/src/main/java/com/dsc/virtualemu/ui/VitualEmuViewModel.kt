@@ -638,17 +638,9 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun unlockProSimulated(key: String = "LOCAL") {
-        cloudService.verifyAndUnlockPro(key)
-        showFeedback("All VitualEmu features are unlocked locally.")
-    }
-
-    fun simulateAccountDeletion() {
-        viewModelScope.launch {
-            keymapEngine.neutralizeAll("account_deletion")
-            cloudService.deleteCloudAccountAndEntitlements()
-            showFeedback("Cloud account & entitlement records deleted. Local profiles preserved.")
-        }
+    fun clearDiagnosticsCache() {
+        diagnostics.recordSafeStop("Diagnostics Log Reset")
+        showFeedback("Local diagnostics log reset.")
     }
 
     override fun onCleared() {

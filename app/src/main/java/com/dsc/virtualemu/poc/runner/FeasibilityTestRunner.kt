@@ -84,7 +84,7 @@ class FeasibilityTestRunner {
             updateRecord(
                 FeasibilityExperimentId.ACTIVATION_AUTHORIZATION,
                 ExperimentStatus.PASS,
-                evidenceNotes = "${getActiveBridge().bridgeId.shortName} authorization handshake succeeded."
+                evidenceNotes = "[TEST MOCK] ${getActiveBridge().bridgeId.shortName} test mock authorization checked."
             )
         } else {
             updateRecord(
@@ -305,9 +305,9 @@ class FeasibilityTestRunner {
             failedCount = failed,
             blockedCount = blocked,
             experiments = records,
-            safetyObservations = "All test actions strictly user-initiated. Held inputs neutralized immediately upon focus loss or stop.",
+            safetyObservations = "All test actions strictly user-initiated. Held inputs neutralized immediately upon focus loss or stop. [NOTE: Simulated mock test environment. Physical device Gate 0 verification required on hardware.]",
             recommendation = if (verdict == Gate0Verdict.PASS) {
-                "Proceed to Phase 1 foundation: Shizuku bridge demonstrated safe multi-touch injection and touch-region aim."
+                "Proceed to Phase 1 foundation: Shizuku bridge candidate evaluated in mock suite; physical device validation required on target phone."
             } else {
                 "Hold in Phase 0. Physical-device evidence or fallback tuning required before Phase 1."
             }

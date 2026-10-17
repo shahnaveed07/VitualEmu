@@ -65,10 +65,7 @@ fun SettingsScreen(
     val bridgeStatus by viewModel.bridgeStatus.collectAsState()
     val connectedDevices by viewModel.connectedDevices.collectAsState()
     val hotPlugLog by viewModel.hotPlugLog.collectAsState()
-    val isProUnlocked by viewModel.isProUnlocked.collectAsState()
     val activeProfile by viewModel.activeProfile.collectAsState()
-
-    var showAccountDeletionDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -280,7 +277,7 @@ fun SettingsScreen(
             }
         }
 
-        // Pro Entitlement & Google Play Billing
+        // Application Tier & Feature Access
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = SlateNavy),
@@ -294,15 +291,15 @@ fun SettingsScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "PRO ENTITLEMENT (GOOGLE PLAY)",
+                        text = "APPLICATION TIER & FEATURES",
                         style = MaterialTheme.typography.labelSmall,
                         color = Color(0xFF94A3B8),
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = if (isProUnlocked) "PRO ACTIVE" else "FREE TIER",
+                        text = "CORE MAPPING UNLOCKED",
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (isProUnlocked) StatusEmerald else ElectricBlue,
+                        color = StatusEmerald,
                         fontWeight = FontWeight.Bold
                     )
                 }
@@ -310,7 +307,7 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Text(
-                    text = "Free tier includes core mapping, WASD, macros, single import/export, and safety controls. Pro unlocks batch ZIP exports, profile folders, and side-by-side comparison.",
+                    text = "VitualEmu includes all core keymapping functionality (keyboard & mouse mapping, WASD synthesis, bounded macros, profile import/export, and safe-stop input neutralization) fully available locally on your device.",
                     style = MaterialTheme.typography.bodySmall,
                     color = Color(0xFFCBD5E1),
                     lineHeight = 18.sp
@@ -318,41 +315,15 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                if (isProUnlocked) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(imageVector = Icons.Default.Check, contentDescription = null, tint = StatusEmerald, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Verified via Google Play Developer API", color = StatusEmerald, style = MaterialTheme.typography.bodyMedium)
-                    }
-                } else {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Button(
-                            onClick = { viewModel.unlockProSimulated() },
-                            modifier = Modifier.weight(1f).testTag("purchase_pro_button"),
-                            colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue, contentColor = MidnightBlue)
-                        ) {
-                            Icon(imageVector = Icons.Default.Star, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Unlock Pro ($4.99)")
-                        }
-                        OutlinedButton(
-                            onClick = {
-                                viewModel.unlockProSimulated()
-                                viewModel.showFeedback("Purchases Restored")
-                            },
-                            modifier = Modifier.weight(1f).testTag("restore_purchases_button")
-                        ) {
-                            Text("Restore Purchases")
-                        }
-                    }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(imageVector = Icons.Default.Check, contentDescription = null, tint = StatusEmerald, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("All keymapping & multi-touch features enabled locally", color = StatusEmerald, style = MaterialTheme.typography.bodyMedium)
                 }
             }
         }
 
-        // Privacy, Policy & Account Deletion
+        // Privacy & Local Data Management
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = SlateNavy),
@@ -361,14 +332,14 @@ fun SettingsScreen(
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
-                    text = "PRIVACY & DATA SAFETY",
+                    text = "PRIVACY & LOCAL DATA SAFETY",
                     style = MaterialTheme.typography.labelSmall,
                     color = Color(0xFF94A3B8),
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "• Zero analytics or background trackers bundled.\n• Local-first: all profiles and macros remain private to this device.\n• Safe-stop guarantees all virtual keys are released upon exit.",
+                    text = "• Zero analytics or background trackers bundled.\n• Local-first architecture: all profiles, keymaps, and macros remain private on this phone.\n• Safe-stop guarantees all virtual touch pointers and key codes are neutralized.",
                     style = MaterialTheme.typography.bodySmall,
                     color = Color(0xFFCBD5E1),
                     lineHeight = 20.sp
@@ -377,49 +348,16 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(14.dp))
 
                 OutlinedButton(
-                    onClick = { showAccountDeletionDialog = true },
-                    modifier = Modifier.fillMaxWidth().testTag("delete_account_button"),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = StatusCrimson),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, StatusCrimson.copy(alpha = 0.5f))
+                    onClick = { viewModel.clearDiagnosticsCache() },
+                    modifier = Modifier.fillMaxWidth().testTag("clear_diagnostics_button"),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = ElectricBlue),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, SlateBorder)
                 ) {
-                    Icon(imageVector = Icons.Default.DeleteForever, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Delete Account & Cloud Records")
+                    Text("Reset Local Diagnostics Log", fontSize = 12.sp)
                 }
             }
         }
 
         Spacer(modifier = Modifier.height(30.dp))
-    }
-
-    if (showAccountDeletionDialog) {
-        AlertDialog(
-            onDismissRequest = { showAccountDeletionDialog = false },
-            title = { Text("Delete Cloud Account", color = Color.White) },
-            text = {
-                Text(
-                    "In compliance with Google Play Account Deletion guidelines, this action revokes authentication sessions and deletes all cloud entitlement records. Note that your locally saved profiles and custom mappings on this phone will NOT be erased.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xFFCBD5E1)
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.simulateAccountDeletion()
-                        showAccountDeletionDialog = false
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = StatusCrimson, contentColor = Color.White)
-                ) {
-                    Text("Confirm Deletion")
-                }
-            },
-            dismissButton = {
-                OutlinedButton(onClick = { showAccountDeletionDialog = false }) {
-                    Text("Cancel")
-                }
-            },
-            containerColor = SlateNavy
-        )
     }
 }

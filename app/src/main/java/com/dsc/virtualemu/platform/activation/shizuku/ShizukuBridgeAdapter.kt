@@ -106,13 +106,14 @@ class ShizukuBridgeAdapter(
 
         val next = when {
             binderState.isBinderAlive && binderState.isPermissionGranted -> {
-                ensurePrivilegedInjectorBound()
+                val isBinderBound = ensurePrivilegedInjectorBound()
+                val transportLabel = if (isBinderBound) "IInputManager binder active" else "Shizuku shell evdev fallback"
                 BridgeStatus(
                     type = BridgeType.SHIZUKU,
                     state = BridgeHealthState.CONNECTED,
                     isAuthorized = true,
                     lastLatencyMs = elapsedMs,
-                    detailMessage = "Shizuku binder authorized (${binderState.transportLabel}, ${elapsedMs}ms)",
+                    detailMessage = "Shizuku authorized ($transportLabel, ${elapsedMs}ms)",
                     capabilities = capabilities
                 )
             }

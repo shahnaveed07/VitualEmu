@@ -156,6 +156,26 @@ class LocalAdbShellTransport {
                 out.write(buildAdbPacket(CMD_OPEN, localShellId, 0, openPayload))
                 out.flush()
 
+                // Read daemon response (OKAY or CLSE) to verify interactive stream authorization
+                val openRespHeader = ByteArray(24)
+                val openRespRead = try {
+                    inp.read(openRespHeader)
+                } catch (_: Throwable) {
+                    -1
+                }
+
+                if (openRespRead == 24) {
+                    val hdrBuf = ByteBuffer.wrap(openRespHeader).order(ByteOrder.LITTLE_ENDIAN)
+                    val openCmd = hdrBuf.int
+                    val arg0 = hdrBuf.int
+                    if (openCmd == CMD_OKAY) {
+                        remoteShellId = arg0
+                    } else if (openCmd == CMD_CLSE) {
+                        try { tcp.close() } catch (_: Throwable) {}
+                        return false
+                    }
+                }
+
                 socket = tcp
                 outputStream = out
                 inputStream = inp
@@ -321,7 +341,7 @@ class RootlessWirelessAdbBridgeAdapter(
                     state = BridgeHealthState.DISCONNECTED,
                     isAuthorized = false,
                     lastLatencyMs = -1L,
-                    detailMessage = "No ADB daemon listening on 127.0.0.1:$port. Enable Wireless Debugging in Developer Options.",
+                    detailMessage = "Unable to connect ADB shell on 127.0.0.1:$port. Note: Android Wireless Debugging uses separate Wireless Debugging Port vs. Pairing Port in Developer Options.",
                     activeDaemonPort = port,
                     capabilities = capabilities
                 )
