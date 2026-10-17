@@ -1,12 +1,19 @@
 package com.dsc.virtualemu.ui
 
 import android.app.Application
+import android.content.Context
+import android.net.Uri
 import android.provider.Settings
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.dsc.virtualemu.cloud.EntitlementCloudService
 import com.dsc.virtualemu.data.repository.VitualEmuRepository
+import com.dsc.virtualemu.domain.mapping.KeymapCfgParser
+import com.dsc.virtualemu.domain.mapping.KeymapExportManager
+import com.dsc.virtualemu.domain.mapping.ParsedCfgData
 import com.dsc.virtualemu.domain.model.BridgeHealthState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.dsc.virtualemu.domain.model.BridgeStatus
 import com.dsc.virtualemu.domain.model.BridgeType
 import com.dsc.virtualemu.domain.model.DeviceInfo
@@ -20,6 +27,8 @@ import com.dsc.virtualemu.domain.model.ProfileSnapshot
 import com.dsc.virtualemu.domain.model.SessionState
 import com.dsc.virtualemu.domain.policy.SafetyPolicy
 import com.dsc.virtualemu.domain.usecase.HeldInputRegistry
+import com.dsc.virtualemu.domain.usecase.InstalledApp
+import com.dsc.virtualemu.domain.usecase.InstalledAppDiscoveryUseCase
 import com.dsc.virtualemu.platform.activation.rootless.RootlessWirelessAdbBridgeAdapter
 import com.dsc.virtualemu.platform.activation.shizuku.ShizukuBridgeAdapter
 import com.dsc.virtualemu.platform.devices.DeviceManager
@@ -51,6 +60,7 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
     private val sessionManager = SessionManager()
     private val cloudService = EntitlementCloudService()
     private val diagnostics = RuntimeDiagnostics()
+    private val appDiscoveryUseCase = InstalledAppDiscoveryUseCase(application)
 
     private var activeBridge: InputBridgeAdapter = ShizukuBridgeAdapter()
 
@@ -70,6 +80,15 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
 
     private val _activeProfile = MutableStateFlow<Profile?>(null)
     val activeProfile: StateFlow<Profile?> = _activeProfile.asStateFlow()
+
+    private val _parsedImportData = MutableStateFlow<ParsedCfgData?>(null)
+    val parsedImportData: StateFlow<ParsedCfgData?> = _parsedImportData.asStateFlow()
+
+    private val _installedApps = MutableStateFlow<List<InstalledApp>>(emptyList())
+    val installedApps: StateFlow<List<InstalledApp>> = _installedApps.asStateFlow()
+
+    private val _isDiscoveringApps = MutableStateFlow(false)
+    val isDiscoveringApps: StateFlow<Boolean> = _isDiscoveringApps.asStateFlow()
 
     private val _bridgeStatus = MutableStateFlow(
         BridgeStatus(
@@ -133,13 +152,6 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
             emergencySafeStop(reason)
         }
 
-        viewModelScope.launch {
-            games.collect { list ->
-                if (_activeGame.value == null && list.isNotEmpty()) {
-                    selectGame(list.first())
-                }
-            }
-        }
         refreshBridgeHealth()
     }
 
@@ -149,6 +161,55 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun clearFeedback() {
         _snackbarMessage.value = null
+    }
+
+    fun discoverInstalledApps() {
+        viewModelScope.launch {
+            _isDiscoveringApps.value = true
+            val existingPackages = games.value.map { it.packageName }.toSet()
+            val apps = appDiscoveryUseCase.discoverInstalledApps(existingPackages)
+            _installedApps.value = apps
+            _isDiscoveringApps.value = false
+        }
+    }
+
+    fun isPackageInstalledOnDevice(packageName: String): Boolean {
+        return appDiscoveryUseCase.isPackageInstalled(packageName)
+    }
+
+    fun addInstalledGame(app: InstalledApp) {
+        if (app.packageName.isBlank()) return
+        viewModelScope.launch {
+            val existing = repository.getGameByPackage(app.packageName)
+            if (existing != null) {
+                selectGame(existing)
+                showFeedback("Game already added: ${existing.displayName}")
+                return@launch
+            }
+            val game = Game(
+                packageName = app.packageName,
+                displayName = app.displayName,
+                isTargeted = true
+            )
+            repository.insertGame(game)
+            selectGame(game)
+            showFeedback("Added game: ${game.displayName}")
+        }
+    }
+
+    fun removeGame(gameId: String) {
+        viewModelScope.launch {
+            val game = repository.getGameById(gameId)
+            if (game != null) {
+                repository.deleteGame(game)
+                if (_activeGame.value?.gameId == gameId) {
+                    _activeGame.value = null
+                    _activeProfile.value = null
+                    _profiles.value = emptyList()
+                }
+                showFeedback("Removed game: ${game.displayName}")
+            }
+        }
     }
 
     fun selectGame(game: Game) {
@@ -173,14 +234,24 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun addManualGame(packageName: String, displayName: String) {
-        if (packageName.isBlank()) {
+        val trimmedPkg = packageName.trim()
+        if (trimmedPkg.isBlank()) {
             showFeedback("Package name cannot be empty")
             return
         }
-        val finalDisplayName = displayName.ifBlank { packageName.substringAfterLast('.') }
+        if (!appDiscoveryUseCase.isPackageInstalled(trimmedPkg)) {
+            showFeedback("Warning: Package '$trimmedPkg' is not installed on this device")
+        }
+        val finalDisplayName = displayName.ifBlank { trimmedPkg.substringAfterLast('.') }
         viewModelScope.launch {
+            val existing = repository.getGameByPackage(trimmedPkg)
+            if (existing != null) {
+                selectGame(existing)
+                showFeedback("Game already added: ${existing.displayName}")
+                return@launch
+            }
             val game = Game(
-                packageName = packageName.trim(),
+                packageName = trimmedPkg,
                 displayName = finalDisplayName.trim(),
                 isTargeted = true
             )
@@ -193,6 +264,88 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
     fun selectProfile(profile: Profile) {
         _activeProfile.value = profile
         mouseLookEngine.updateConfig(profile.mouseLookConfig)
+        val game = _activeGame.value ?: return
+        viewModelScope.launch {
+            repository.setSelectedScheme(game.gameId, profile.profileId)
+        }
+    }
+
+    fun parseCfgFileFromUri(context: Context, uri: Uri) {
+        viewModelScope.launch {
+            val content = withContext(Dispatchers.IO) {
+                try {
+                    context.contentResolver.openInputStream(uri)?.use { stream ->
+                        stream.bufferedReader().readText()
+                    } ?: ""
+                } catch (e: Exception) {
+                    ""
+                }
+            }
+            if (content.isBlank()) {
+                showFeedback("Failed to read configuration file from picker")
+                return@launch
+            }
+            val gameId = _activeGame.value?.gameId ?: ""
+            val parsed = KeymapCfgParser.parseCfgJson(content, gameId)
+            _parsedImportData.value = parsed
+            if (parsed.profiles.isEmpty()) {
+                showFeedback("No valid control schemes found in file")
+            } else if (parsed.warnings.isNotEmpty()) {
+                showFeedback("Parsed configuration with ${parsed.warnings.size} warning(s)")
+            }
+        }
+    }
+
+    fun confirmImportSelectedSchemes(gameId: String, selectedProfiles: List<Profile>) {
+        viewModelScope.launch {
+            repository.importSchemesForGame(gameId, selectedProfiles)
+            _parsedImportData.value = null
+            showFeedback("Imported ${selectedProfiles.size} scheme(s) successfully")
+            _activeGame.value?.let { selectGame(it) }
+        }
+    }
+
+    fun clearImportPreview() {
+        _parsedImportData.value = null
+    }
+
+    fun exportActiveSchemeToCfg(context: Context, uri: Uri) {
+        val active = _activeProfile.value ?: return
+        viewModelScope.launch {
+            val cfgString = KeymapExportManager.exportToBlueStacksCfg(listOf(active))
+            val success = withContext(Dispatchers.IO) {
+                try {
+                    context.contentResolver.openOutputStream(uri)?.use { out ->
+                        out.write(cfgString.toByteArray(Charsets.UTF_8))
+                    }
+                    true
+                } catch (_: Exception) {
+                    false
+                }
+            }
+            if (success) showFeedback("Exported active scheme '${active.name}' successfully")
+            else showFeedback("Failed to write export file")
+        }
+    }
+
+    fun exportAllSchemesToCfg(context: Context, uri: Uri) {
+        val allProfiles = _profiles.value
+        if (allProfiles.isEmpty()) return
+        viewModelScope.launch {
+            val cfgString = KeymapExportManager.exportToBlueStacksCfg(allProfiles)
+            val success = withContext(Dispatchers.IO) {
+                try {
+                    context.contentResolver.openOutputStream(uri)?.use { out ->
+                        out.write(cfgString.toByteArray(Charsets.UTF_8))
+                    }
+                    true
+                } catch (_: Exception) {
+                    false
+                }
+            }
+            if (success) showFeedback("Exported all ${allProfiles.size} schemes successfully")
+            else showFeedback("Failed to write export file")
+        }
     }
 
     fun createNewProfile(name: String) {

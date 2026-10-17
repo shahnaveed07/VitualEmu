@@ -262,6 +262,45 @@ fun ActivationWizardScreen(
                 }
             }
 
+            // Method 3: USB PC Activation Card
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, SlateBorder, RoundedCornerShape(14.dp)),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = SlateNavy)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Method 3: USB PC Companion Activation (Windows)", fontWeight = FontWeight.Bold, color = Color.White, style = MaterialTheme.typography.titleSmall)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        StatusBadge("Requires PC", color = ElectricBlue, showDot = false)
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "GG Mouse Pro-style activation via host PC. Connect your device via USB with USB Debugging enabled, then launch the Windows Activation Tool.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFF94A3B8)
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            StepItem(number = "1", title = "Enable USB Debugging", desc = "Go to Settings > Developer Options > USB Debugging.")
+                            StepItem(number = "2", title = "Connect USB Cable", desc = "Plug phone into Windows PC and tap 'Allow USB Debugging' on prompt.")
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            StepItem(number = "3", title = "Run Windows Activator", desc = "Execute 'GG Mouse Pro Activation Tool' on PC (TCP/IP 3035 mode).")
+                            StepItem(number = "4", title = "Verify Connection", desc = "Tap 'Test Bridge Connection' above to confirm authorization.")
+                        }
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(24.dp))
         }
     }

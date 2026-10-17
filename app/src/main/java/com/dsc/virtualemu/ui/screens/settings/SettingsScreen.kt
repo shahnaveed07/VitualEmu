@@ -19,7 +19,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DeleteForever
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -31,6 +30,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -65,6 +66,7 @@ fun SettingsScreen(
     val connectedDevices by viewModel.connectedDevices.collectAsState()
     val hotPlugLog by viewModel.hotPlugLog.collectAsState()
     val isProUnlocked by viewModel.isProUnlocked.collectAsState()
+    val activeProfile by viewModel.activeProfile.collectAsState()
 
     var showAccountDeletionDialog by remember { mutableStateOf(false) }
 
@@ -77,6 +79,64 @@ fun SettingsScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Spacer(modifier = Modifier.height(8.dp))
+
+        // Active Scheme Tuning Card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = SlateNavy),
+            shape = RoundedCornerShape(16.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, SlateBorder)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "ACTIVE SCHEME TUNING (${activeProfile?.name ?: "None Selected"})",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFF94A3B8),
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+
+                val profile = activeProfile
+                if (profile == null) {
+                    Text(
+                        text = "No active scheme selected. Select a game and control scheme from Profiles tab.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFF94A3B8)
+                    )
+                } else {
+                    val config = profile.mouseLookConfig
+                    Text(
+                        text = "Mouse Look X Sensitivity: ${"%.2f".format(config.sensitivityX)}",
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Slider(
+                        value = config.sensitivityX,
+                        onValueChange = { newX ->
+                            viewModel.updateMouseLookConfig(config.copy(sensitivityX = newX))
+                        },
+                        valueRange = 0.2f..5.0f,
+                        colors = SliderDefaults.colors(thumbColor = ElectricBlue, activeTrackColor = ElectricBlue)
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Text(
+                        text = "Mouse Look Y Sensitivity: ${"%.2f".format(config.sensitivityY)}",
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Slider(
+                        value = config.sensitivityY,
+                        onValueChange = { newY ->
+                            viewModel.updateMouseLookConfig(config.copy(sensitivityY = newY))
+                        },
+                        valueRange = 0.2f..5.0f,
+                        colors = SliderDefaults.colors(thumbColor = ElectricBlue, activeTrackColor = ElectricBlue)
+                    )
+                }
+            }
+        }
 
         // Bridge Candidate Switcher
         Card(

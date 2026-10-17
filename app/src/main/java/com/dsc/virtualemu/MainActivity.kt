@@ -153,6 +153,10 @@ fun VitualEmuApp(viewModel: VitualEmuViewModel) {
                         onNavigateToEditor = { currentRoute = NavDestinations.EDITOR },
                         onNavigateToActivation = { currentRoute = NavDestinations.ACTIVATION },
                         onNavigateToTestMode = { currentRoute = NavDestinations.TEST_MODE },
+                        onNavigateToGames = {
+                            currentTab = MainTab.GAMES
+                            currentRoute = NavDestinations.GAMES
+                        },
                         modifier = Modifier.padding(innerPadding)
                     )
                 }

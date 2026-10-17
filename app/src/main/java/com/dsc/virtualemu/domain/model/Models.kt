@@ -51,6 +51,7 @@ enum class MappingType(val label: String) {
     FREE_LOOK_EYE("Free Look (Eye Button)"),
     FIRE_WEAPON("Primary Fire / Smart Drag"),
     SWIPE("Swipe / Flick"),
+    TAP_REPEAT("Rapid Tap Repeat"),
     MACRO_TRIGGER("Macro Execution Trigger")
 }
 
@@ -65,6 +66,8 @@ data class Mapping(
     val type: MappingType,
     val keyCode: Int = 0,
     val keyLabel: String = "",
+    val altKeyCode: Int = 0,
+    val altKeyLabel: String = "",
     val normalizedX: Float = 0.5f,
     val normalizedY: Float = 0.5f,
     val endNormalizedX: Float = 0.5f,
@@ -72,7 +75,12 @@ data class Mapping(
     val normalizedWidth: Float = 0.12f,
     val normalizedHeight: Float = 0.12f,
     val sensitivity: Float = 1.0f,
+    val sensitivityRatioY: Float = 1.0f,
     val isToggle: Boolean = false,
+    val repeatDelayMs: Long = 50L,
+    val repeatUntilKeyUp: Boolean = true,
+    val guidanceCategory: String = "",
+    val guidanceText: String = "",
     val macroId: String? = null
 )
 

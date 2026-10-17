@@ -61,6 +61,8 @@ data class MappingEntity(
     val type: String,
     val keyCode: Int,
     val keyLabel: String,
+    val altKeyCode: Int = 0,
+    val altKeyLabel: String = "",
     val normalizedX: Float,
     val normalizedY: Float,
     val endNormalizedX: Float = normalizedX,
@@ -68,7 +70,12 @@ data class MappingEntity(
     val normalizedWidth: Float,
     val normalizedHeight: Float,
     val sensitivity: Float = 1.0f,
+    val sensitivityRatioY: Float = 1.0f,
     val isToggle: Boolean = false,
+    val repeatDelayMs: Long = 50L,
+    val repeatUntilKeyUp: Boolean = true,
+    val guidanceCategory: String = "",
+    val guidanceText: String = "",
     val macroId: String? = null
 )
 

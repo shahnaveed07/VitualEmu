@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
@@ -69,6 +70,7 @@ fun HomeScreen(
     onNavigateToEditor: () -> Unit,
     onNavigateToActivation: () -> Unit,
     onNavigateToTestMode: () -> Unit,
+    onNavigateToGames: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val activeGame by viewModel.activeGame.collectAsState()
@@ -128,136 +130,212 @@ fun HomeScreen(
             }
         }
 
-        // Active Game & Profile Card
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(1.dp, SlateBorder, RoundedCornerShape(16.dp)),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = SlateNavy)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "ACTIVE TARGET GAME",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFF94A3B8),
-                        fontWeight = FontWeight.Bold
-                    )
-                    StatusBadge(
-                        text = if (sessionState == SessionState.ACTIVE) "PLAY MODE ACTIVE" else "STANDBY",
-                        color = if (sessionState == SessionState.ACTIVE) StatusEmerald else Color(0xFF94A3B8)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .background(
-                                Brush.linearGradient(listOf(Color(0xFF0284C7), Color(0xFF0369A1))),
-                                RoundedCornerShape(12.dp)
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Gamepad,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(28.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(12.dp))
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = activeGame?.displayName ?: "No Game Selected",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                        Text(
-                            text = activeGame?.packageName ?: "Select a game from Games library",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFF94A3B8)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Profile info
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color(0xFF0F172A), RoundedCornerShape(10.dp))
-                        .padding(12.dp)
-                ) {
+        // Active Game / Empty State Card
+        if (activeGame == null) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, SlateBorder, RoundedCornerShape(16.dp)),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = SlateNavy)
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
-                            Text(
-                                text = "Mapped Profile",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color(0xFF64748B)
-                            )
-                            Text(
-                                text = activeProfile?.name ?: "No Profile Attached",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = ElectricBlue
-                            )
+                        Text(
+                            text = "TARGET GAME",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFF94A3B8),
+                            fontWeight = FontWeight.Bold
+                        )
+                        StatusBadge(
+                            text = "NO GAME ADDED",
+                            color = StatusAmber
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Text(
+                        text = "No game added",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Text(
+                        text = "Add an installed game to create your first control profile.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color(0xFF94A3B8)
+                    )
+
+                    Spacer(modifier = Modifier.height(18.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Button(
+                            onClick = onNavigateToGames,
+                            colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue, contentColor = MidnightBlue),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.weight(1f).height(44.dp).testTag("add_game_home_button")
+                        ) {
+                            Icon(imageVector = Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Add Game", fontWeight = FontWeight.Bold)
                         }
 
-                        Button(
-                            onClick = onNavigateToEditor,
-                            colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.testTag("open_editor_button")
+                        OutlinedButton(
+                            onClick = onNavigateToActivation,
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, SlateBorder),
+                            modifier = Modifier.weight(1f).height(44.dp).testTag("activation_settings_home_button")
                         ) {
-                            Icon(imageVector = Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(16.dp), tint = MidnightBlue)
+                            Icon(imageVector = Icons.Default.Build, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Edit Canvas", color = MidnightBlue, fontWeight = FontWeight.Bold)
+                            Text("Activation Settings")
                         }
                     }
                 }
+            }
+        } else {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, SlateBorder, RoundedCornerShape(16.dp)),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = SlateNavy)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "ACTIVE TARGET GAME",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFF94A3B8),
+                            fontWeight = FontWeight.Bold
+                        )
+                        StatusBadge(
+                            text = if (sessionState == SessionState.ACTIVE) "PLAY MODE ACTIVE" else "STANDBY",
+                            color = if (sessionState == SessionState.ACTIVE) StatusEmerald else Color(0xFF94A3B8)
+                        )
+                    }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
-                // Quick Launch / Play Mode Start Button
-                Button(
-                    onClick = { viewModel.startPlayMode() },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                        .testTag("start_play_mode_button"),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (sessionState == SessionState.ACTIVE) StatusAmber else StatusEmerald
-                    ),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Icon(
-                        imageVector = if (sessionState == SessionState.ACTIVE) Icons.Default.Stop else Icons.Default.PlayArrow,
-                        contentDescription = null,
-                        tint = Color.White
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = if (sessionState == SessionState.ACTIVE) "PAUSE PLAY MODE" else "START PLAY MODE",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
-                        color = Color.White
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .background(
+                                    Brush.linearGradient(listOf(Color(0xFF0284C7), Color(0xFF0369A1))),
+                                    RoundedCornerShape(12.dp)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Gamepad,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = activeGame?.displayName ?: "",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Text(
+                                text = activeGame?.packageName ?: "",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF94A3B8)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Profile info
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF0F172A), RoundedCornerShape(10.dp))
+                            .padding(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "Mapped Profile",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color(0xFF64748B)
+                                )
+                                Text(
+                                    text = activeProfile?.name ?: "No Profile Attached",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = ElectricBlue
+                                )
+                            }
+
+                            Button(
+                                onClick = onNavigateToEditor,
+                                colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.testTag("open_editor_button")
+                            ) {
+                                Icon(imageVector = Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(16.dp), tint = MidnightBlue)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Edit Canvas", color = MidnightBlue, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Quick Launch / Play Mode Start Button
+                    Button(
+                        onClick = { viewModel.startPlayMode() },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .testTag("start_play_mode_button"),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (sessionState == SessionState.ACTIVE) StatusAmber else StatusEmerald
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (sessionState == SessionState.ACTIVE) Icons.Default.Stop else Icons.Default.PlayArrow,
+                            contentDescription = null,
+                            tint = Color.White
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = if (sessionState == SessionState.ACTIVE) "PAUSE PLAY MODE" else "START PLAY MODE",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = Color.White
+                        )
+                    }
                 }
             }
         }

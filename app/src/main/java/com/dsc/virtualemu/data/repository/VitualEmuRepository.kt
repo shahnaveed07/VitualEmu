@@ -20,6 +20,7 @@ import com.dsc.virtualemu.domain.model.ProfileSnapshot
 import com.dsc.virtualemu.domain.policy.SafetyPolicy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -39,6 +40,14 @@ class VitualEmuRepository(context: Context) {
         return gameDao.getAllGames().map { list ->
             list.map { it.toDomain() }
         }
+    }
+
+    suspend fun getGameByPackage(packageName: String): Game? = withContext(Dispatchers.IO) {
+        gameDao.getGameByPackage(packageName)?.toDomain()
+    }
+
+    suspend fun getGameById(gameId: String): Game? = withContext(Dispatchers.IO) {
+        gameDao.getGameById(gameId)?.toDomain()
     }
 
     suspend fun insertGame(game: Game) = withContext(Dispatchers.IO) {
@@ -101,6 +110,21 @@ class VitualEmuRepository(context: Context) {
 
     suspend fun deleteProfile(profileId: String) = withContext(Dispatchers.IO) {
         profileDao.deleteProfileById(profileId)
+    }
+
+    suspend fun setSelectedScheme(gameId: String, selectedProfileId: String) = withContext(Dispatchers.IO) {
+        val entities = profileDao.getProfilesForGame(gameId).first()
+        for (p in entities) {
+            val updated = p.copy(isFavorite = (p.profileId == selectedProfileId), updatedAt = System.currentTimeMillis())
+            profileDao.updateProfile(updated)
+        }
+    }
+
+    suspend fun importSchemesForGame(gameId: String, importedProfiles: List<Profile>) = withContext(Dispatchers.IO) {
+        for (p in importedProfiles) {
+            val clean = p.copy(gameId = gameId)
+            saveProfile(clean, "Imported Scheme: ${clean.name}")
+        }
     }
 
     suspend fun duplicateProfile(original: Profile, newName: String): Profile = withContext(Dispatchers.IO) {
@@ -438,6 +462,8 @@ class VitualEmuRepository(context: Context) {
         type = try { MappingType.valueOf(type) } catch (_: Exception) { MappingType.TAP },
         keyCode = keyCode,
         keyLabel = keyLabel,
+        altKeyCode = altKeyCode,
+        altKeyLabel = altKeyLabel,
         normalizedX = normalizedX,
         normalizedY = normalizedY,
         endNormalizedX = endNormalizedX,
@@ -445,7 +471,12 @@ class VitualEmuRepository(context: Context) {
         normalizedWidth = normalizedWidth,
         normalizedHeight = normalizedHeight,
         sensitivity = sensitivity,
+        sensitivityRatioY = sensitivityRatioY,
         isToggle = isToggle,
+        repeatDelayMs = repeatDelayMs,
+        repeatUntilKeyUp = repeatUntilKeyUp,
+        guidanceCategory = guidanceCategory,
+        guidanceText = guidanceText,
         macroId = macroId
     )
 
@@ -456,6 +487,8 @@ class VitualEmuRepository(context: Context) {
         type = type.name,
         keyCode = keyCode,
         keyLabel = keyLabel,
+        altKeyCode = altKeyCode,
+        altKeyLabel = altKeyLabel,
         normalizedX = normalizedX,
         normalizedY = normalizedY,
         endNormalizedX = endNormalizedX,
@@ -463,7 +496,12 @@ class VitualEmuRepository(context: Context) {
         normalizedWidth = normalizedWidth,
         normalizedHeight = normalizedHeight,
         sensitivity = sensitivity,
+        sensitivityRatioY = sensitivityRatioY,
         isToggle = isToggle,
+        repeatDelayMs = repeatDelayMs,
+        repeatUntilKeyUp = repeatUntilKeyUp,
+        guidanceCategory = guidanceCategory,
+        guidanceText = guidanceText,
         macroId = macroId
     )
 

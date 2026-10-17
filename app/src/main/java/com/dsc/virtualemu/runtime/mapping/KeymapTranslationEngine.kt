@@ -93,8 +93,12 @@ class KeymapTranslationEngine(
             }
         }
 
-        // 5. Check Direct Mappings (TAP, HOLD, FIRE_WEAPON, SWIPE, MACRO_TRIGGER)
-        val matchingMappings = profile.mappings.filter { it.keyCode == keyCode && it.type != MappingType.WASD_STICK && it.type != MappingType.AIM_LOOK }
+        // 5. Check Direct Mappings (TAP, HOLD, FIRE_WEAPON, SWIPE, TAP_REPEAT, MACRO_TRIGGER)
+        val matchingMappings = profile.mappings.filter {
+            (it.keyCode == keyCode || (it.altKeyCode != 0 && it.altKeyCode == keyCode)) &&
+                    it.type != MappingType.WASD_STICK &&
+                    it.type != MappingType.AIM_LOOK
+        }
         for (mapping in matchingMappings) {
             dispatchMappingControl(profile, mapping, isDown, heldKeys)
         }
@@ -160,6 +164,16 @@ class KeymapTranslationEngine(
                         delay(12L)
                         dispatcher.touchMoveDynamic(ownerId, ix, iy)
                     }
+                    dispatcher.touchUpDynamic(ownerId)
+                }
+            }
+            MappingType.TAP_REPEAT -> {
+                if (isDown) {
+                    val delayMs = mapping.repeatDelayMs.coerceAtLeast(20L)
+                    dispatcher.touchDownDynamic(ownerId, mapping.normalizedX, mapping.normalizedY)
+                    delay(delayMs)
+                    dispatcher.touchUpDynamic(ownerId)
+                } else {
                     dispatcher.touchUpDynamic(ownerId)
                 }
             }

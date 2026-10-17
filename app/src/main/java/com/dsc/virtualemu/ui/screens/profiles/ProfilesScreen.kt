@@ -1,10 +1,11 @@
 package com.dsc.virtualemu.ui.screens.profiles
 
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -26,8 +28,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileUpload
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Gamepad
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -56,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dsc.virtualemu.domain.model.Profile
 import com.dsc.virtualemu.ui.VitualEmuViewModel
+import com.dsc.virtualemu.ui.components.StatusBadge
 import com.dsc.virtualemu.ui.theme.ElectricBlue
 import com.dsc.virtualemu.ui.theme.MidnightBlue
 import com.dsc.virtualemu.ui.theme.SlateBorder
@@ -74,15 +76,23 @@ fun ProfilesScreen(
     val profiles by viewModel.profiles.collectAsState()
     val activeProfile by viewModel.activeProfile.collectAsState()
     val activeGame by viewModel.activeGame.collectAsState()
+    val parsedImportData by viewModel.parsedImportData.collectAsState()
 
     var showCreateDialog by remember { mutableStateOf(false) }
     var newProfileName by remember { mutableStateOf("") }
+    var profileToDelete by remember { mutableStateOf<Profile?>(null) }
 
-    var showExportDialog by remember { mutableStateOf<String?>(null) }
-    var showImportDialog by remember { mutableStateOf(false) }
-    var importJsonText by remember { mutableStateOf("") }
+    val openDocLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        uri?.let { viewModel.parseCfgFileFromUri(context, it) }
+    }
 
-    var showHistoryForProfile by remember { mutableStateOf<Profile?>(null) }
+    val createDocLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri: Uri? ->
+        uri?.let { viewModel.exportAllSchemesToCfg(context, it) }
+    }
 
     Box(
         modifier = modifier
@@ -96,13 +106,13 @@ fun ProfilesScreen(
         ) {
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Action toolbar: Import & Export
+            // Action toolbar: SAF Import & Export
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 OutlinedButton(
-                    onClick = { showImportDialog = true },
+                    onClick = { openDocLauncher.launch(arrayOf("*/*")) },
                     modifier = Modifier.weight(1f).testTag("import_profile_button"),
                     shape = RoundedCornerShape(10.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = ElectricBlue),
@@ -110,17 +120,13 @@ fun ProfilesScreen(
                 ) {
                     Icon(imageVector = Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Import JSON")
+                    Text("Import File (.cfg/.json)")
                 }
 
                 OutlinedButton(
                     onClick = {
-                        val json = viewModel.exportActiveProfileJson()
-                        if (json != null) {
-                            showExportDialog = json
-                        } else {
-                            viewModel.showFeedback("No profile selected to export")
-                        }
+                        val fileName = "${activeGame?.packageName ?: "VitualEmu"}_keymap.cfg"
+                        createDocLauncher.launch(fileName)
                     },
                     modifier = Modifier.weight(1f).testTag("export_profile_button"),
                     shape = RoundedCornerShape(10.dp),
@@ -129,14 +135,51 @@ fun ProfilesScreen(
                 ) {
                     Icon(imageVector = Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Export JSON")
+                    Text("Export Schemes")
                 }
             }
 
             Spacer(modifier = Modifier.height(14.dp))
 
+            // Scheme Selector Bar
+            if (activeGame != null && profiles.isNotEmpty()) {
+                Text(
+                    text = "CONTROL SCHEMES FOR ${activeGame?.displayName?.uppercase()}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFF94A3B8),
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(profiles, key = { it.profileId }) { profile ->
+                        val isSelected = activeProfile?.profileId == profile.profileId
+                        Box(
+                            modifier = Modifier
+                                .background(if (isSelected) ElectricBlue else SlateNavy, RoundedCornerShape(10.dp))
+                                .border(1.dp, if (isSelected) ElectricBlue else SlateBorder, RoundedCornerShape(10.dp))
+                                .clickable { viewModel.selectProfile(profile) }
+                                .padding(horizontal = 14.dp, vertical = 8.dp)
+                        ) {
+                            Text(
+                                text = profile.name,
+                                color = if (isSelected) MidnightBlue else Color.White,
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+            }
+
             Text(
-                text = "SAVED PROFILES (${profiles.size})",
+                text = "SAVED SCHEMES (${profiles.size})",
                 style = MaterialTheme.typography.labelSmall,
                 color = Color(0xFF94A3B8),
                 fontWeight = FontWeight.Bold
@@ -144,36 +187,68 @@ fun ProfilesScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(profiles, key = { it.profileId }) { profile ->
-                    val isActive = activeProfile?.profileId == profile.profileId
-                    ProfileCard(
-                        profile = profile,
-                        isActive = isActive,
-                        onSelect = {
-                            viewModel.selectProfile(profile)
-                        },
-                        onEdit = {
-                            viewModel.selectProfile(profile)
-                            onNavigateToEditor()
-                        },
-                        onDuplicate = {
-                            viewModel.selectProfile(profile)
-                            viewModel.duplicateActiveProfile()
-                        },
-                        onHistory = {
-                            showHistoryForProfile = profile
-                        },
-                        onDelete = {
-                            viewModel.deleteProfile(profile.profileId)
+            if (profiles.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, SlateBorder, RoundedCornerShape(16.dp)),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = SlateNavy)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(imageVector = Icons.Default.Gamepad, contentDescription = null, tint = ElectricBlue, modifier = Modifier.size(44.dp))
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text("No schemes created yet", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("Import a .cfg / .json configuration or create a new scheme for your selected game.", color = Color(0xFF94A3B8), style = MaterialTheme.typography.bodyMedium)
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Button(
+                                onClick = { showCreateDialog = true },
+                                colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue, contentColor = MidnightBlue)
+                            ) {
+                                Icon(imageVector = Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("New Control Scheme", fontWeight = FontWeight.Bold)
+                            }
                         }
-                    )
+                    }
                 }
-                item {
-                    Spacer(modifier = Modifier.height(80.dp))
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(profiles, key = { it.profileId }) { profile ->
+                        val isActive = activeProfile?.profileId == profile.profileId
+                        ProfileCardItem(
+                            profile = profile,
+                            isActive = isActive,
+                            onSelect = { viewModel.selectProfile(profile) },
+                            onEdit = {
+                                viewModel.selectProfile(profile)
+                                onNavigateToEditor()
+                            },
+                            onDuplicate = {
+                                viewModel.selectProfile(profile)
+                                viewModel.duplicateActiveProfile()
+                            },
+                            onDelete = {
+                                profileToDelete = profile
+                            }
+                        )
+                    }
+                    item {
+                        Spacer(modifier = Modifier.height(80.dp))
+                    }
                 }
             }
         }
@@ -187,43 +262,57 @@ fun ProfilesScreen(
             containerColor = ElectricBlue,
             contentColor = MidnightBlue
         ) {
-            Icon(imageVector = Icons.Default.Add, contentDescription = "New Profile")
+            Icon(imageVector = Icons.Default.Add, contentDescription = "New Scheme")
         }
     }
 
-    // Create Profile Dialog
+    // Import Preview Dialog
+    parsedImportData?.let { parsed ->
+        ImportPreviewDialog(
+            parsedData = parsed,
+            activeGame = activeGame,
+            onConfirmImport = { selectedProfiles ->
+                val gameId = activeGame?.gameId ?: ""
+                if (gameId.isNotBlank()) {
+                    viewModel.confirmImportSelectedSchemes(gameId, selectedProfiles)
+                } else {
+                    viewModel.showFeedback("Please select a target game first")
+                }
+            },
+            onDismiss = { viewModel.clearImportPreview() }
+        )
+    }
+
+    // Create Scheme Dialog
     if (showCreateDialog) {
         AlertDialog(
             onDismissRequest = { showCreateDialog = false },
-            title = { Text("Create New Profile", color = Color.White) },
+            title = { Text("Create New Control Scheme", color = Color.White, fontWeight = FontWeight.Bold) },
             text = {
-                Column {
-                    Text(
-                        "Enter a name for this control profile for ${activeGame?.displayName ?: "current game"}.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF94A3B8)
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Enter a friendly name for this scheme (e.g., 'CUSTOM', 'Casual', 'Vehicle').", color = Color(0xFF94A3B8), style = MaterialTheme.typography.bodySmall)
                     OutlinedTextField(
                         value = newProfileName,
                         onValueChange = { newProfileName = it },
-                        label = { Text("Profile Name") },
-                        placeholder = { Text("e.g. Tactical Sniper") },
+                        label = { Text("Scheme Name") },
+                        placeholder = { Text("CUSTOM") },
                         singleLine = true,
-                        modifier = Modifier.fillMaxWidth().testTag("new_profile_name_input")
+                        modifier = Modifier.fillMaxWidth().testTag("new_scheme_name_input")
                     )
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        viewModel.createNewProfile(newProfileName)
-                        newProfileName = ""
-                        showCreateDialog = false
+                        if (newProfileName.isNotBlank()) {
+                            viewModel.createNewProfile(newProfileName)
+                            newProfileName = ""
+                            showCreateDialog = false
+                        }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue, contentColor = MidnightBlue)
                 ) {
-                    Text("Create")
+                    Text("Create Scheme", fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
@@ -235,159 +324,26 @@ fun ProfilesScreen(
         )
     }
 
-    // Export Dialog
-    if (showExportDialog != null) {
+    // Delete Scheme Dialog
+    profileToDelete?.let { profile ->
         AlertDialog(
-            onDismissRequest = { showExportDialog = null },
-            title = { Text("Exported Profile JSON", color = Color.White) },
-            text = {
-                Column {
-                    Text(
-                        "Safe versioned interchange JSON. Contains normalized coordinates and macro bounds. No sensitive credentials are included.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF94A3B8)
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = showExportDialog!!,
-                        onValueChange = {},
-                        readOnly = true,
-                        maxLines = 8,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
+            onDismissRequest = { profileToDelete = null },
+            title = { Text("Delete Scheme", color = Color.White, fontWeight = FontWeight.Bold) },
+            text = { Text("Are you sure you want to delete scheme '${profile.name}'?", color = Color(0xFFCBD5E1)) },
             confirmButton = {
                 Button(
                     onClick = {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        clipboard.setPrimaryClip(ClipData.newPlainText("VitualEmu Profile", showExportDialog))
-                        viewModel.showFeedback("Profile JSON copied to clipboard")
-                        showExportDialog = null
+                        viewModel.deleteProfile(profile.profileId)
+                        profileToDelete = null
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue, contentColor = MidnightBlue)
+                    colors = ButtonDefaults.buttonColors(containerColor = StatusCrimson, contentColor = Color.White)
                 ) {
-                    Text("Copy to Clipboard")
+                    Text("Delete", fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
-                OutlinedButton(onClick = { showExportDialog = null }) {
-                    Text("Close")
-                }
-            },
-            containerColor = SlateNavy
-        )
-    }
-
-    // Import Dialog
-    if (showImportDialog) {
-        AlertDialog(
-            onDismissRequest = { showImportDialog = false },
-            title = { Text("Import Profile JSON", color = Color.White) },
-            text = {
-                Column {
-                    Text(
-                        "Paste a valid VitualEmu profile JSON below. Schema version and boundary constraints will be strictly validated.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF94A3B8)
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = importJsonText,
-                        onValueChange = { importJsonText = it },
-                        label = { Text("Profile JSON Payload") },
-                        maxLines = 8,
-                        modifier = Modifier.fillMaxWidth().testTag("import_json_input")
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        if (importJsonText.isNotBlank()) {
-                            viewModel.importProfileJson(importJsonText)
-                            importJsonText = ""
-                            showImportDialog = false
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue, contentColor = MidnightBlue)
-                ) {
-                    Text("Import")
-                }
-            },
-            dismissButton = {
-                OutlinedButton(onClick = { showImportDialog = false }) {
+                OutlinedButton(onClick = { profileToDelete = null }) {
                     Text("Cancel")
-                }
-            },
-            containerColor = SlateNavy
-        )
-    }
-
-    // Snapshot History Dialog
-    if (showHistoryForProfile != null) {
-        val targetProfile = showHistoryForProfile!!
-        val snapshots by viewModel.getSnapshots(targetProfile.profileId).collectAsState(initial = emptyList())
-
-        AlertDialog(
-            onDismissRequest = { showHistoryForProfile = null },
-            title = {
-                Text("Snapshot History & Rollback", color = Color.White, fontWeight = FontWeight.Bold)
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        "Bounded recovery snapshots for '${targetProfile.name}'. Restore any prior state without losing other profiles.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF94A3B8)
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    if (snapshots.isEmpty()) {
-                        Text("No snapshots recorded yet. Snapshots are created automatically on each save.", color = Color(0xFF64748B), style = MaterialTheme.typography.bodySmall)
-                    } else {
-                        snapshots.forEach { snap ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(Color(0xFF0F172A), RoundedCornerShape(8.dp))
-                                    .border(1.dp, SlateBorder, RoundedCornerShape(8.dp))
-                                    .padding(10.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = snap.reason,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White
-                                    )
-                                    Text(
-                                        text = android.text.format.DateFormat.format("yyyy-MM-dd HH:mm:ss", snap.createdAt).toString(),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = Color(0xFF94A3B8)
-                                    )
-                                }
-                                Button(
-                                    onClick = {
-                                        viewModel.rollbackToSnapshot(snap)
-                                        showHistoryForProfile = null
-                                    },
-                                    shape = RoundedCornerShape(6.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = StatusAmber, contentColor = MidnightBlue),
-                                    modifier = Modifier.padding(start = 8.dp)
-                                ) {
-                                    Text("Rollback", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                OutlinedButton(onClick = { showHistoryForProfile = null }) {
-                    Text("Close")
                 }
             },
             containerColor = SlateNavy
@@ -396,105 +352,89 @@ fun ProfilesScreen(
 }
 
 @Composable
-fun ProfileCard(
+fun ProfileCardItem(
     profile: Profile,
     isActive: Boolean,
     onSelect: () -> Unit,
     onEdit: () -> Unit,
     onDuplicate: () -> Unit,
-    onHistory: () -> Unit,
     onDelete: () -> Unit
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .testTag("profile_card_${profile.profileId}"),
-        colors = CardDefaults.cardColors(containerColor = if (isActive) Color(0xFF1E293B) else SlateNavy),
         shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = if (isActive) Color(0xFF1E293B) else SlateNavy),
         border = androidx.compose.foundation.BorderStroke(
             if (isActive) 2.dp else 1.dp,
             if (isActive) ElectricBlue else SlateBorder
         )
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (profile.isFavorite) {
-                        Icon(imageVector = Icons.Default.Star, contentDescription = "Favorite", tint = StatusAmber, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                    }
                     Text(
                         text = profile.name,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
+                    if (isActive) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        StatusBadge("ACTIVE SCHEME", color = StatusEmerald, showDot = true)
+                    }
                 }
 
-                if (isActive) {
-                    Text(
-                        text = "ACTIVE",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = StatusEmerald,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier
-                            .background(StatusEmerald.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
-                            .padding(horizontal = 8.dp, vertical = 2.dp)
-                    )
+                Row {
+                    IconButton(onClick = onDuplicate) {
+                        Icon(imageVector = Icons.Default.ContentCopy, contentDescription = "Duplicate", tint = Color(0xFF94A3B8))
+                    }
+                    IconButton(onClick = onDelete) {
+                        Icon(imageVector = Icons.Default.Delete, contentDescription = "Delete", tint = Color(0xFF94A3B8))
+                    }
                 }
             }
 
             Spacer(modifier = Modifier.height(4.dp))
 
             Text(
-                text = "${profile.mappings.size} controls mapped • Schema v${profile.schemaVersion}",
+                text = "${profile.mappings.size} Key Mappings • ${profile.macros.size} Macro Combos",
                 style = MaterialTheme.typography.bodySmall,
                 color = Color(0xFF94A3B8)
             )
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 if (!isActive) {
-                    Button(
+                    OutlinedButton(
                         onClick = onSelect,
+                        modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue, contentColor = MidnightBlue),
-                        modifier = Modifier.weight(1f)
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = ElectricBlue),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, SlateBorder)
                     ) {
-                        Text("Select", fontWeight = FontWeight.Bold)
+                        Text("Select Scheme")
                     }
                 }
 
                 Button(
                     onClick = onEdit,
+                    modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = if (isActive) ElectricBlue else SlateBorder, contentColor = if (isActive) MidnightBlue else Color.White),
-                    modifier = Modifier.weight(1f)
+                    colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue, contentColor = MidnightBlue)
                 ) {
                     Icon(imageVector = Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Editor")
-                }
-
-                IconButton(onClick = onDuplicate, modifier = Modifier.size(36.dp)) {
-                    Icon(imageVector = Icons.Default.ContentCopy, contentDescription = "Save Copy", tint = Color.White)
-                }
-
-                IconButton(onClick = onHistory, modifier = Modifier.size(36.dp)) {
-                    Icon(imageVector = Icons.Default.History, contentDescription = "Snapshot History", tint = ElectricBlue)
-                }
-
-                IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
-                    Icon(imageVector = Icons.Default.Delete, contentDescription = "Delete", tint = StatusCrimson)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Edit Canvas", fontWeight = FontWeight.Bold)
                 }
             }
         }
