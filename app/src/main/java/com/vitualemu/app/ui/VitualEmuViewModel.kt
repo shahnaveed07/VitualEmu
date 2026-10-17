@@ -4,27 +4,40 @@ import android.app.Application
 import android.provider.Settings
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.vitualemu.app.cloud.EntitlementCloudService
 import com.vitualemu.app.data.repository.VitualEmuRepository
 import com.vitualemu.app.domain.model.BridgeHealthState
 import com.vitualemu.app.domain.model.BridgeStatus
 import com.vitualemu.app.domain.model.BridgeType
 import com.vitualemu.app.domain.model.DeviceInfo
 import com.vitualemu.app.domain.model.Game
+import com.vitualemu.app.domain.model.Macro
 import com.vitualemu.app.domain.model.Mapping
+import com.vitualemu.app.domain.model.MouseLookConfig
 import com.vitualemu.app.domain.model.PreflightResult
 import com.vitualemu.app.domain.model.Profile
 import com.vitualemu.app.domain.model.ProfileSnapshot
 import com.vitualemu.app.domain.model.SessionState
+import com.vitualemu.app.domain.policy.SafetyPolicy
 import com.vitualemu.app.domain.usecase.HeldInputRegistry
+import com.vitualemu.app.platform.activation.rootless.RootlessWirelessAdbBridgeAdapter
+import com.vitualemu.app.platform.activation.shizuku.ShizukuBridgeAdapter
 import com.vitualemu.app.platform.devices.DeviceManager
 import com.vitualemu.app.runtime.bridge.InputBridgeAdapter
-import com.vitualemu.app.runtime.bridge.RootlessAdbBridge
-import com.vitualemu.app.runtime.bridge.ShizukuBridge
+import com.vitualemu.app.runtime.diagnostics.DiagnosticsSnapshot
+import com.vitualemu.app.runtime.diagnostics.RuntimeDiagnostics
+import com.vitualemu.app.runtime.input.ActivePointerSlot
+import com.vitualemu.app.runtime.input.MultiTouchDispatcher
+import com.vitualemu.app.runtime.macro.MacroEngine
+import com.vitualemu.app.runtime.mapping.KeymapTranslationEngine
+import com.vitualemu.app.runtime.mouselook.MouseLookEngine
+import com.vitualemu.app.runtime.mouselook.MouseLookState
 import com.vitualemu.app.runtime.session.SessionManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -33,8 +46,15 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
     private val repository = VitualEmuRepository(application)
     private val deviceManager = DeviceManager(application)
     private val sessionManager = SessionManager()
+    private val cloudService = EntitlementCloudService()
+    private val diagnostics = RuntimeDiagnostics()
 
-    private var activeBridge: InputBridgeAdapter = ShizukuBridge()
+    private var activeBridge: InputBridgeAdapter = ShizukuBridgeAdapter()
+
+    val multiTouchDispatcher = MultiTouchDispatcher { activeBridge }
+    val mouseLookEngine = MouseLookEngine(multiTouchDispatcher)
+    val macroEngine = MacroEngine(multiTouchDispatcher, viewModelScope)
+    val keymapEngine = KeymapTranslationEngine(multiTouchDispatcher, mouseLookEngine, macroEngine)
 
     val games: StateFlow<List<Game>> = repository.getAllGames()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -64,8 +84,14 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
     val sessionState: StateFlow<SessionState> = sessionManager.sessionState
     val preflightResult: StateFlow<PreflightResult?> = sessionManager.preflightResult
 
-    private val _isProUnlocked = MutableStateFlow(false)
-    val isProUnlocked: StateFlow<Boolean> = _isProUnlocked.asStateFlow()
+    val mouseLookState: StateFlow<MouseLookState> = mouseLookEngine.state
+    val activePointerSlots: StateFlow<List<ActivePointerSlot>> = multiTouchDispatcher.slotsFlow
+    val runningMacros: StateFlow<Set<String>> = macroEngine.runningMacroIds
+    val diagnosticsSnapshot: StateFlow<DiagnosticsSnapshot> = diagnostics.snapshot
+
+    val isProUnlocked: StateFlow<Boolean> = cloudService.entitlement
+        .map { it.isProUnlocked }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     private val _snackbarMessage = MutableStateFlow<String?>(null)
     val snackbarMessage: StateFlow<String?> = _snackbarMessage.asStateFlow()
@@ -96,7 +122,11 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
             repository.getProfilesForGame(game.gameId).collect { profileList ->
                 _profiles.value = profileList
                 if (profileList.isNotEmpty()) {
-                    if (_activeProfile.value == null || _activeProfile.value?.gameId != game.gameId) {
+                    val currentId = _activeProfile.value?.profileId
+                    val matched = profileList.find { it.profileId == currentId }
+                    if (matched != null) {
+                        selectProfile(matched)
+                    } else if (_activeProfile.value == null || _activeProfile.value?.gameId != game.gameId) {
                         selectProfile(profileList.first())
                     }
                 } else {
@@ -107,14 +137,15 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun addManualGame(packageName: String, displayName: String) {
-        if (packageName.isBlank() || displayName.isBlank()) {
-            showFeedback("Package and name cannot be empty")
+        if (packageName.isBlank()) {
+            showFeedback("Package name cannot be empty")
             return
         }
+        val finalDisplayName = displayName.ifBlank { packageName.substringAfterLast('.') }
         viewModelScope.launch {
             val game = Game(
                 packageName = packageName.trim(),
-                displayName = displayName.trim(),
+                displayName = finalDisplayName.trim(),
                 isTargeted = true
             )
             repository.insertGame(game)
@@ -125,6 +156,7 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun selectProfile(profile: Profile) {
         _activeProfile.value = profile
+        mouseLookEngine.updateConfig(profile.mouseLookConfig)
     }
 
     fun createNewProfile(name: String) {
@@ -137,14 +169,57 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
             )
             repository.saveProfile(newProfile, "Initial profile creation")
             _activeProfile.value = newProfile
+            mouseLookEngine.updateConfig(newProfile.mouseLookConfig)
             showFeedback("Created profile: $name")
         }
     }
 
     fun updateActiveProfile(profile: Profile) {
         _activeProfile.value = profile
+        mouseLookEngine.updateConfig(profile.mouseLookConfig)
         viewModelScope.launch {
-            repository.saveProfile(profile)
+            repository.saveProfile(profile, "Manual canvas save")
+        }
+    }
+
+    fun updateMouseLookConfig(newConfig: MouseLookConfig) {
+        val profile = _activeProfile.value ?: return
+        val sanitized = SafetyPolicy.sanitizeMouseLookConfig(newConfig)
+        mouseLookEngine.updateConfig(sanitized)
+        val updated = profile.copy(
+            mouseLookConfig = sanitized,
+            updatedAt = System.currentTimeMillis()
+        )
+        _activeProfile.value = updated
+        viewModelScope.launch {
+            repository.saveProfile(updated)
+        }
+    }
+
+    fun addMacro(macro: Macro) {
+        val profile = _activeProfile.value ?: return
+        val cleanMacro = SafetyPolicy.sanitizeMacro(macro)
+        val updated = profile.copy(
+            macros = profile.macros + cleanMacro,
+            updatedAt = System.currentTimeMillis()
+        )
+        _activeProfile.value = updated
+        viewModelScope.launch {
+            repository.saveProfile(updated, "Added macro ${cleanMacro.name}")
+            showFeedback("Saved bounded macro: ${cleanMacro.name}")
+        }
+    }
+
+    fun removeMacro(macroId: String) {
+        val profile = _activeProfile.value ?: return
+        val updated = profile.copy(
+            macros = profile.macros.filter { it.id != macroId },
+            updatedAt = System.currentTimeMillis()
+        )
+        _activeProfile.value = updated
+        viewModelScope.launch {
+            repository.saveProfile(updated)
+            showFeedback("Removed macro")
         }
     }
 
@@ -183,6 +258,7 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
             )
             repository.saveProfile(adjusted, "Imported from JSON")
             _activeProfile.value = adjusted
+            mouseLookEngine.updateConfig(adjusted.mouseLookConfig)
             showFeedback("Imported profile successfully")
         }
         return true
@@ -198,6 +274,7 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
             val restored = repository.rollbackToSnapshot(snapshotId)
             if (restored != null) {
                 _activeProfile.value = restored
+                mouseLookEngine.updateConfig(restored.mouseLookConfig)
                 showFeedback("Restored profile to snapshot")
             } else {
                 showFeedback("Failed to restore snapshot")
@@ -212,10 +289,20 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
     fun setBridge(type: BridgeType) {
         activeBridge.shutdown()
         activeBridge = when (type) {
-            BridgeType.SHIZUKU -> ShizukuBridge()
-            BridgeType.ROOTLESS_WIRELESS_DEBUGGING -> RootlessAdbBridge()
+            BridgeType.SHIZUKU -> ShizukuBridgeAdapter()
+            BridgeType.ROOTLESS_WIRELESS_DEBUGGING -> RootlessWirelessAdbBridgeAdapter()
         }
         refreshBridgeHealth()
+    }
+
+    fun pairWirelessAdb(port: Int, pairingCode: String) {
+        val adbAdapter = activeBridge as? RootlessWirelessAdbBridgeAdapter
+            ?: RootlessWirelessAdbBridgeAdapter().also { activeBridge = it }
+        viewModelScope.launch {
+            val status = adbAdapter.pairAndConnectEphemeral(port, pairingCode)
+            _bridgeStatus.value = status
+            showFeedback(status.detailMessage)
+        }
     }
 
     fun refreshBridgeHealth() {
@@ -241,6 +328,14 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun startPlayMode(): Boolean {
+        if (sessionState.value == SessionState.ACTIVE) {
+            sessionManager.pauseSession()
+            viewModelScope.launch {
+                keymapEngine.neutralizeAll()
+            }
+            showFeedback("Play Mode Paused. All held inputs neutralized.")
+            return false
+        }
         val preflight = runPreflight()
         if (!preflight.isReady) {
             showFeedback("Preflight check failed. Resolve blockers to start.")
@@ -253,13 +348,57 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
         return started
     }
 
+    fun toggleShootingMode() {
+        viewModelScope.launch {
+            val active = mouseLookEngine.toggleShootingMode()
+            diagnostics.recordTouchDispatch(
+                _bridgeStatus.value.lastLatencyMs,
+                if (active) "Shooting Mode: ON (Pointer 1 Aim Lock)" else "Cursor Mode: ON"
+            )
+        }
+    }
+
+    fun toggleFreeLookPreview() {
+        viewModelScope.launch {
+            val next = !mouseLookEngine.state.value.isFreeLookActive
+            mouseLookEngine.setFreeLookActive(next)
+            diagnostics.recordTouchDispatch(
+                _bridgeStatus.value.lastLatencyMs,
+                if (next) "Free Look (Eye): ON" else "Free Look (Eye): OFF"
+            )
+        }
+    }
+
+    fun dispatchSandboxKeyEvent(keyCode: Int, isDown: Boolean, onResult: (String) -> Unit = {}) {
+        val profile = _activeProfile.value ?: return
+        viewModelScope.launch {
+            val summary = keymapEngine.handleKeyEvent(profile, keyCode, isDown)
+            diagnostics.recordTouchDispatch(_bridgeStatus.value.lastLatencyMs, summary)
+            onResult(summary)
+        }
+    }
+
+    fun dispatchSandboxMouseDelta(deltaX: Float, deltaY: Float) {
+        viewModelScope.launch {
+            mouseLookEngine.onMouseDelta(deltaX, deltaY)
+        }
+    }
+
     fun emergencySafeStop() {
+        viewModelScope.launch {
+            keymapEngine.neutralizeAll()
+        }
         sessionManager.emergencySafeStop()
-        showFeedback("EMERGENCY SAFE STOP: All inputs released.")
+        diagnostics.recordSafeStop("User Emergency Safe-Stop")
+        showFeedback("EMERGENCY SAFE STOP: All 10 pointer slots & macros neutralized.")
     }
 
     fun onFocusLoss() {
+        viewModelScope.launch {
+            keymapEngine.neutralizeAll()
+        }
         sessionManager.onFocusLost()
+        diagnostics.recordSafeStop("Window Focus Loss Auto-Neutralize")
     }
 
     // Mapping Editor Actions
@@ -294,8 +433,7 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun unlockProSimulated(key: String = "VITUALEMU-PRO") {
-        if (key.trim().equals("VITUALEMU-PRO", ignoreCase = true) || key.length >= 8) {
-            _isProUnlocked.value = true
+        if (cloudService.verifyAndUnlockPro(key)) {
             showFeedback("VitualEmu Pro features unlocked!")
         } else {
             showFeedback("Invalid activation license key")
@@ -304,9 +442,9 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun simulateAccountDeletion() {
         viewModelScope.launch {
-            HeldInputRegistry.releaseAll()
-            _isProUnlocked.value = false
-            showFeedback("Local session data and preferences cleared")
+            keymapEngine.neutralizeAll()
+            cloudService.deleteCloudAccountAndEntitlements()
+            showFeedback("Cloud account & entitlement records deleted. Local profiles preserved.")
         }
     }
 

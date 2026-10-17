@@ -11,10 +11,13 @@ import com.vitualemu.app.data.local.room.VitualEmuDatabase
 import com.vitualemu.app.domain.model.Game
 import com.vitualemu.app.domain.model.Macro
 import com.vitualemu.app.domain.model.MacroStep
+import com.vitualemu.app.domain.model.MacroTriggerMode
 import com.vitualemu.app.domain.model.Mapping
 import com.vitualemu.app.domain.model.MappingType
+import com.vitualemu.app.domain.model.MouseLookConfig
 import com.vitualemu.app.domain.model.Profile
 import com.vitualemu.app.domain.model.ProfileSnapshot
+import com.vitualemu.app.domain.policy.SafetyPolicy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -74,18 +77,25 @@ class VitualEmuRepository(context: Context) {
     }
 
     suspend fun saveProfile(profile: Profile, snapshotReason: String? = null) = withContext(Dispatchers.IO) {
-        profileDao.insertProfile(profile.toEntity())
-        mappingDao.deleteMappingsForProfile(profile.profileId)
-        mappingDao.insertMappings(profile.mappings.map { it.toEntity() })
+        val sanitizedMacros = profile.macros.map { SafetyPolicy.sanitizeMacro(it) }
+        val sanitizedMouseLook = SafetyPolicy.sanitizeMouseLookConfig(profile.mouseLookConfig)
+        val cleanProfile = profile.copy(
+            macros = sanitizedMacros,
+            mouseLookConfig = sanitizedMouseLook
+        )
 
-        macroDao.deleteMacrosForProfile(profile.profileId)
-        for (macro in profile.macros) {
+        profileDao.insertProfile(cleanProfile.toEntity())
+        mappingDao.deleteMappingsForProfile(cleanProfile.profileId)
+        mappingDao.insertMappings(cleanProfile.mappings.map { it.toEntity() })
+
+        macroDao.deleteMacrosForProfile(cleanProfile.profileId)
+        for (macro in cleanProfile.macros) {
             macroDao.insertMacro(macro.toEntity())
             macroDao.insertMacroSteps(macro.steps.map { it.toEntity() })
         }
 
         if (snapshotReason != null) {
-            createSnapshot(profile, snapshotReason)
+            createSnapshot(cleanProfile, snapshotReason)
         }
     }
 
@@ -151,6 +161,7 @@ class VitualEmuRepository(context: Context) {
         root.put("name", profile.name)
         root.put("createdAt", profile.createdAt)
         root.put("updatedAt", profile.updatedAt)
+        root.put("mouseLookConfig", serializeMouseLook(profile.mouseLookConfig))
 
         val mappingsArray = JSONArray()
         for (m in profile.mappings) {
@@ -162,6 +173,8 @@ class VitualEmuRepository(context: Context) {
             mo.put("keyLabel", m.keyLabel)
             mo.put("normalizedX", m.normalizedX.toDouble())
             mo.put("normalizedY", m.normalizedY.toDouble())
+            mo.put("endNormalizedX", m.endNormalizedX.toDouble())
+            mo.put("endNormalizedY", m.endNormalizedY.toDouble())
             mo.put("normalizedWidth", m.normalizedWidth.toDouble())
             mo.put("normalizedHeight", m.normalizedHeight.toDouble())
             mo.put("sensitivity", m.sensitivity.toDouble())
@@ -170,6 +183,36 @@ class VitualEmuRepository(context: Context) {
             mappingsArray.put(mo)
         }
         root.put("mappings", mappingsArray)
+
+        val macrosArray = JSONArray()
+        for (macro in profile.macros) {
+            val macObj = JSONObject()
+            macObj.put("id", macro.id)
+            macObj.put("name", macro.name)
+            macObj.put("triggerKeyCode", macro.triggerKeyCode)
+            macObj.put("triggerKeyLabel", macro.triggerKeyLabel)
+            macObj.put("chordModifierKeyCode", macro.chordModifierKeyCode)
+            macObj.put("triggerMode", macro.triggerMode.name)
+            macObj.put("isLooping", macro.isLooping)
+            macObj.put("maxLoopIterations", macro.maxLoopIterations)
+            val stepsArray = JSONArray()
+            for (step in macro.steps) {
+                val stObj = JSONObject()
+                stObj.put("id", step.id)
+                stObj.put("stepIndex", step.stepIndex)
+                stObj.put("actionType", step.actionType)
+                stObj.put("normalizedX", step.normalizedX.toDouble())
+                stObj.put("normalizedY", step.normalizedY.toDouble())
+                stObj.put("endNormalizedX", step.endNormalizedX.toDouble())
+                stObj.put("endNormalizedY", step.endNormalizedY.toDouble())
+                stObj.put("delayMs", step.delayMs)
+                stObj.put("holdDurationMs", step.holdDurationMs)
+                stepsArray.put(stObj)
+            }
+            macObj.put("steps", stepsArray)
+            macrosArray.put(macObj)
+        }
+        root.put("macros", macrosArray)
         return root.toString(2)
     }
 
@@ -179,7 +222,9 @@ class VitualEmuRepository(context: Context) {
             val profileId = root.optString("profileId", UUID.randomUUID().toString())
             val gameId = root.optString("gameId", "")
             val name = root.optString("name", "Imported Profile")
-            val schemaVersion = root.optInt("schemaVersion", 1)
+            val schemaVersion = root.optInt("schemaVersion", 2)
+            val mouseLookConfig = root.optJSONObject("mouseLookConfig")?.let { deserializeMouseLook(it) }
+                ?: MouseLookConfig()
 
             val mappingsList = mutableListOf<Mapping>()
             val mappingsArray = root.optJSONArray("mappings")
@@ -188,6 +233,8 @@ class VitualEmuRepository(context: Context) {
                     val mo = mappingsArray.getJSONObject(i)
                     val typeStr = mo.optString("type", "TAP")
                     val type = try { MappingType.valueOf(typeStr) } catch (_: Exception) { MappingType.TAP }
+                    val normX = mo.optDouble("normalizedX", 0.5).toFloat().coerceIn(0f, 1f)
+                    val normY = mo.optDouble("normalizedY", 0.5).toFloat().coerceIn(0f, 1f)
                     mappingsList.add(
                         Mapping(
                             id = mo.optString("id", UUID.randomUUID().toString()),
@@ -196,12 +243,67 @@ class VitualEmuRepository(context: Context) {
                             type = type,
                             keyCode = mo.optInt("keyCode", 0),
                             keyLabel = mo.optString("keyLabel", ""),
-                            normalizedX = mo.optDouble("normalizedX", 0.5).toFloat(),
-                            normalizedY = mo.optDouble("normalizedY", 0.5).toFloat(),
+                            normalizedX = normX,
+                            normalizedY = normY,
+                            endNormalizedX = mo.optDouble("endNormalizedX", normX.toDouble()).toFloat().coerceIn(0f, 1f),
+                            endNormalizedY = mo.optDouble("endNormalizedY", normY.toDouble()).toFloat().coerceIn(0f, 1f),
                             normalizedWidth = mo.optDouble("normalizedWidth", 0.1).toFloat(),
                             normalizedHeight = mo.optDouble("normalizedHeight", 0.1).toFloat(),
                             sensitivity = mo.optDouble("sensitivity", 1.0).toFloat(),
-                            isToggle = mo.optBoolean("isToggle", false)
+                            isToggle = mo.optBoolean("isToggle", false),
+                            macroId = mo.optString("macroId", "").takeIf { it.isNotBlank() }
+                        )
+                    )
+                }
+            }
+
+            val macrosList = mutableListOf<Macro>()
+            val macrosArray = root.optJSONArray("macros")
+            if (macrosArray != null) {
+                for (i in 0 until macrosArray.length()) {
+                    val macObj = macrosArray.getJSONObject(i)
+                    val macroId = macObj.optString("id", UUID.randomUUID().toString())
+                    val stepsList = mutableListOf<MacroStep>()
+                    val stepsArray = macObj.optJSONArray("steps")
+                    if (stepsArray != null) {
+                        for (j in 0 until stepsArray.length()) {
+                            val stObj = stepsArray.getJSONObject(j)
+                            val nx = stObj.optDouble("normalizedX", 0.5).toFloat()
+                            val ny = stObj.optDouble("normalizedY", 0.5).toFloat()
+                            stepsList.add(
+                                SafetyPolicy.sanitizeMacroStep(
+                                    MacroStep(
+                                        id = stObj.optString("id", UUID.randomUUID().toString()),
+                                        macroId = macroId,
+                                        stepIndex = stObj.optInt("stepIndex", j),
+                                        actionType = stObj.optString("actionType", "TAP"),
+                                        normalizedX = nx,
+                                        normalizedY = ny,
+                                        endNormalizedX = stObj.optDouble("endNormalizedX", nx.toDouble()).toFloat(),
+                                        endNormalizedY = stObj.optDouble("endNormalizedY", ny.toDouble()).toFloat(),
+                                        delayMs = stObj.optLong("delayMs", 50L),
+                                        holdDurationMs = stObj.optLong("holdDurationMs", 50L)
+                                    )
+                                )
+                            )
+                        }
+                    }
+                    val modeStr = macObj.optString("triggerMode", "ON_PRESS")
+                    val mode = try { MacroTriggerMode.valueOf(modeStr) } catch (_: Exception) { MacroTriggerMode.ON_PRESS }
+                    macrosList.add(
+                        SafetyPolicy.sanitizeMacro(
+                            Macro(
+                                id = macroId,
+                                profileId = profileId,
+                                name = macObj.optString("name", "Macro $i"),
+                                triggerKeyCode = macObj.optInt("triggerKeyCode", 0),
+                                triggerKeyLabel = macObj.optString("triggerKeyLabel", ""),
+                                chordModifierKeyCode = macObj.optInt("chordModifierKeyCode", 0),
+                                triggerMode = mode,
+                                steps = stepsList,
+                                isLooping = macObj.optBoolean("isLooping", false),
+                                maxLoopIterations = macObj.optInt("maxLoopIterations", 10)
+                            )
                         )
                     )
                 }
@@ -212,11 +314,63 @@ class VitualEmuRepository(context: Context) {
                 gameId = gameId,
                 name = name,
                 schemaVersion = schemaVersion,
-                mappings = mappingsList
+                mappings = mappingsList,
+                macros = macrosList,
+                mouseLookConfig = SafetyPolicy.sanitizeMouseLookConfig(mouseLookConfig)
             )
         } catch (_: Exception) {
             null
         }
+    }
+
+    private fun serializeMouseLook(cfg: MouseLookConfig): JSONObject {
+        return JSONObject().apply {
+            put("toggleKeyCode", cfg.toggleKeyCode)
+            put("toggleKeyLabel", cfg.toggleKeyLabel)
+            put("sensitivityX", cfg.sensitivityX.toDouble())
+            put("sensitivityY", cfg.sensitivityY.toDouble())
+            put("invertX", cfg.invertX)
+            put("invertY", cfg.invertY)
+            put("smoothing", cfg.smoothing.toDouble())
+            put("acceleration", cfg.acceleration.toDouble())
+            put("autoEdgeReset", cfg.autoEdgeReset)
+            put("edgeThreshold", cfg.edgeThreshold.toDouble())
+            put("centerNormalizedX", cfg.centerNormalizedX.toDouble())
+            put("centerNormalizedY", cfg.centerNormalizedY.toDouble())
+            put("freeLookEnabled", cfg.freeLookEnabled)
+            put("freeLookKeyCode", cfg.freeLookKeyCode)
+            put("freeLookKeyLabel", cfg.freeLookKeyLabel)
+            put("freeLookNormalizedX", cfg.freeLookNormalizedX.toDouble())
+            put("freeLookNormalizedY", cfg.freeLookNormalizedY.toDouble())
+            put("smartDragEnabled", cfg.smartDragEnabled)
+            put("smartDragVerticalSpeed", cfg.smartDragVerticalSpeed.toDouble())
+            put("smartDragHorizontalSpeed", cfg.smartDragHorizontalSpeed.toDouble())
+        }
+    }
+
+    private fun deserializeMouseLook(obj: JSONObject): MouseLookConfig {
+        return MouseLookConfig(
+            toggleKeyCode = obj.optInt("toggleKeyCode", 68),
+            toggleKeyLabel = obj.optString("toggleKeyLabel", "GRAVE (~) / RClick"),
+            sensitivityX = obj.optDouble("sensitivityX", 1.2).toFloat(),
+            sensitivityY = obj.optDouble("sensitivityY", 1.0).toFloat(),
+            invertX = obj.optBoolean("invertX", false),
+            invertY = obj.optBoolean("invertY", false),
+            smoothing = obj.optDouble("smoothing", 0.25).toFloat(),
+            acceleration = obj.optDouble("acceleration", 0.10).toFloat(),
+            autoEdgeReset = obj.optBoolean("autoEdgeReset", true),
+            edgeThreshold = obj.optDouble("edgeThreshold", 0.08).toFloat(),
+            centerNormalizedX = obj.optDouble("centerNormalizedX", 0.72).toFloat(),
+            centerNormalizedY = obj.optDouble("centerNormalizedY", 0.48).toFloat(),
+            freeLookEnabled = obj.optBoolean("freeLookEnabled", true),
+            freeLookKeyCode = obj.optInt("freeLookKeyCode", 57),
+            freeLookKeyLabel = obj.optString("freeLookKeyLabel", "ALT_LEFT"),
+            freeLookNormalizedX = obj.optDouble("freeLookNormalizedX", 0.82).toFloat(),
+            freeLookNormalizedY = obj.optDouble("freeLookNormalizedY", 0.26).toFloat(),
+            smartDragEnabled = obj.optBoolean("smartDragEnabled", false),
+            smartDragVerticalSpeed = obj.optDouble("smartDragVerticalSpeed", 0.04).toFloat(),
+            smartDragHorizontalSpeed = obj.optDouble("smartDragHorizontalSpeed", 0.0).toFloat()
+        )
     }
 
     private fun sha256(input: String): String {
@@ -246,17 +400,25 @@ class VitualEmuRepository(context: Context) {
         lastPlayedAt = lastPlayedAt
     )
 
-    private fun ProfileEntity.toDomain(mappings: List<Mapping>, macros: List<Macro>) = Profile(
-        profileId = profileId,
-        gameId = gameId,
-        name = name,
-        schemaVersion = schemaVersion,
-        isFavorite = isFavorite,
-        createdAt = createdAt,
-        updatedAt = updatedAt,
-        mappings = mappings,
-        macros = macros
-    )
+    private fun ProfileEntity.toDomain(mappings: List<Mapping>, macros: List<Macro>): Profile {
+        val mouseLook = if (mouseLookJson.isNotBlank()) {
+            try { deserializeMouseLook(JSONObject(mouseLookJson)) } catch (_: Exception) { MouseLookConfig() }
+        } else {
+            MouseLookConfig()
+        }
+        return Profile(
+            profileId = profileId,
+            gameId = gameId,
+            name = name,
+            schemaVersion = schemaVersion,
+            isFavorite = isFavorite,
+            createdAt = createdAt,
+            updatedAt = updatedAt,
+            mappings = mappings,
+            macros = macros,
+            mouseLookConfig = mouseLook
+        )
+    }
 
     private fun Profile.toEntity() = ProfileEntity(
         profileId = profileId,
@@ -265,7 +427,8 @@ class VitualEmuRepository(context: Context) {
         schemaVersion = schemaVersion,
         isFavorite = isFavorite,
         createdAt = createdAt,
-        updatedAt = updatedAt
+        updatedAt = updatedAt,
+        mouseLookJson = serializeMouseLook(mouseLookConfig).toString()
     )
 
     private fun MappingEntity.toDomain() = Mapping(
@@ -277,6 +440,8 @@ class VitualEmuRepository(context: Context) {
         keyLabel = keyLabel,
         normalizedX = normalizedX,
         normalizedY = normalizedY,
+        endNormalizedX = endNormalizedX,
+        endNormalizedY = endNormalizedY,
         normalizedWidth = normalizedWidth,
         normalizedHeight = normalizedHeight,
         sensitivity = sensitivity,
@@ -293,6 +458,8 @@ class VitualEmuRepository(context: Context) {
         keyLabel = keyLabel,
         normalizedX = normalizedX,
         normalizedY = normalizedY,
+        endNormalizedX = endNormalizedX,
+        endNormalizedY = endNormalizedY,
         normalizedWidth = normalizedWidth,
         normalizedHeight = normalizedHeight,
         sensitivity = sensitivity,
@@ -306,8 +473,11 @@ class VitualEmuRepository(context: Context) {
         name = name,
         triggerKeyCode = triggerKeyCode,
         triggerKeyLabel = triggerKeyLabel,
+        chordModifierKeyCode = chordModifierKeyCode,
+        triggerMode = try { MacroTriggerMode.valueOf(triggerMode) } catch (_: Exception) { MacroTriggerMode.ON_PRESS },
         steps = steps,
-        isLooping = isLooping
+        isLooping = isLooping,
+        maxLoopIterations = maxLoopIterations
     )
 
     private fun Macro.toEntity() = MacroEntity(
@@ -316,7 +486,10 @@ class VitualEmuRepository(context: Context) {
         name = name,
         triggerKeyCode = triggerKeyCode,
         triggerKeyLabel = triggerKeyLabel,
-        isLooping = isLooping
+        chordModifierKeyCode = chordModifierKeyCode,
+        triggerMode = triggerMode.name,
+        isLooping = isLooping,
+        maxLoopIterations = maxLoopIterations
     )
 
     private fun MacroStepEntity.toDomain() = MacroStep(
@@ -326,6 +499,8 @@ class VitualEmuRepository(context: Context) {
         actionType = actionType,
         normalizedX = normalizedX,
         normalizedY = normalizedY,
+        endNormalizedX = endNormalizedX,
+        endNormalizedY = endNormalizedY,
         delayMs = delayMs,
         holdDurationMs = holdDurationMs
     )
@@ -337,6 +512,8 @@ class VitualEmuRepository(context: Context) {
         actionType = actionType,
         normalizedX = normalizedX,
         normalizedY = normalizedY,
+        endNormalizedX = endNormalizedX,
+        endNormalizedY = endNormalizedY,
         delayMs = delayMs,
         holdDurationMs = holdDurationMs
     )

@@ -20,7 +20,7 @@ import java.util.UUID
         MacroStepEntity::class,
         ProfileSnapshotEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class VitualEmuDatabase : RoomDatabase() {
@@ -41,6 +41,7 @@ abstract class VitualEmuDatabase : RoomDatabase() {
                     VitualEmuDatabase::class.java,
                     "vitualemu.db"
                 )
+                .fallbackToDestructiveMigration()
                 .addCallback(DatabaseCallback())
                 .build()
                 INSTANCE = instance
@@ -60,13 +61,14 @@ abstract class VitualEmuDatabase : RoomDatabase() {
         }
 
         private suspend fun seedDefaultGamesAndProfiles(db: VitualEmuDatabase) {
-            val game1Id = "game-codm"
-            val game2Id = "game-pubgm"
-            val game3Id = "game-genshin"
+            val gameCodmId = "game-codm"
+            val gameFreeFireId = "game-freefire"
+            val gameBgmiId = "game-bgmi"
+            val gamePubgId = "game-pubgm"
 
             db.gameDao().insertGame(
                 GameEntity(
-                    gameId = game1Id,
+                    gameId = gameCodmId,
                     packageName = "com.activision.callofduty.shooter",
                     displayName = "Call of Duty: Mobile",
                     iconUri = null,
@@ -76,7 +78,27 @@ abstract class VitualEmuDatabase : RoomDatabase() {
             )
             db.gameDao().insertGame(
                 GameEntity(
-                    gameId = game2Id,
+                    gameId = gameFreeFireId,
+                    packageName = "com.dts.freefireth",
+                    displayName = "Free Fire MAX / TH",
+                    iconUri = null,
+                    isTargeted = true,
+                    lastPlayedAt = System.currentTimeMillis() - 3600000L
+                )
+            )
+            db.gameDao().insertGame(
+                GameEntity(
+                    gameId = gameBgmiId,
+                    packageName = "com.pubg.imobile",
+                    displayName = "Battlegrounds Mobile India (BGMI)",
+                    iconUri = null,
+                    isTargeted = true,
+                    lastPlayedAt = System.currentTimeMillis() - 7200000L
+                )
+            )
+            db.gameDao().insertGame(
+                GameEntity(
+                    gameId = gamePubgId,
                     packageName = "com.tencent.ig",
                     displayName = "PUBG Mobile",
                     iconUri = null,
@@ -84,25 +106,53 @@ abstract class VitualEmuDatabase : RoomDatabase() {
                     lastPlayedAt = System.currentTimeMillis() - 86400000L
                 )
             )
-            db.gameDao().insertGame(
-                GameEntity(
-                    gameId = game3Id,
-                    packageName = "com.miHoYo.GenshinImpact",
-                    displayName = "Genshin Impact",
-                    iconUri = null,
-                    isTargeted = true,
-                    lastPlayedAt = null
-                )
-            )
 
-            // Seed default COD profile
+            // Seed default CODM Tactical profile
             val codProfileId = "profile-codm-tactical"
             db.profileDao().insertProfile(
                 ProfileEntity(
                     profileId = codProfileId,
-                    gameId = game1Id,
-                    name = "Tactical FPS (WASD + Mouse)",
+                    gameId = gameCodmId,
+                    name = "Tactical FPS (WASD + 360° Mouse Look)",
                     isFavorite = true
+                )
+            )
+
+            val glooMacroId = "macro-quick-slide-aim"
+            db.macroDao().insertMacro(
+                MacroEntity(
+                    id = glooMacroId,
+                    profileId = codProfileId,
+                    name = "Quick Slide + ADS Combo",
+                    triggerKeyCode = KeyEvent.KEYCODE_Q,
+                    triggerKeyLabel = "Q",
+                    triggerMode = "ON_PRESS",
+                    isLooping = false,
+                    maxLoopIterations = 1
+                )
+            )
+            db.macroDao().insertMacroSteps(
+                listOf(
+                    MacroStepEntity(
+                        id = UUID.randomUUID().toString(),
+                        macroId = glooMacroId,
+                        stepIndex = 0,
+                        actionType = "TAP",
+                        normalizedX = 0.92f,
+                        normalizedY = 0.88f,
+                        delayMs = 30L,
+                        holdDurationMs = 45L
+                    ),
+                    MacroStepEntity(
+                        id = UUID.randomUUID().toString(),
+                        macroId = glooMacroId,
+                        stepIndex = 1,
+                        actionType = "TAP",
+                        normalizedX = 0.82f,
+                        normalizedY = 0.48f,
+                        delayMs = 40L,
+                        holdDurationMs = 50L
+                    )
                 )
             )
 
@@ -110,24 +160,24 @@ abstract class VitualEmuDatabase : RoomDatabase() {
                 MappingEntity(
                     id = UUID.randomUUID().toString(),
                     profileId = codProfileId,
-                    name = "WASD Movement",
+                    name = "WASD Movement Stick",
                     type = "WASD_STICK",
                     keyCode = KeyEvent.KEYCODE_W,
                     keyLabel = "WASD",
-                    normalizedX = 0.20f,
-                    normalizedY = 0.70f,
+                    normalizedX = 0.18f,
+                    normalizedY = 0.72f,
                     normalizedWidth = 0.18f,
                     normalizedHeight = 0.18f
                 ),
                 MappingEntity(
                     id = UUID.randomUUID().toString(),
                     profileId = codProfileId,
-                    name = "Aim / Look Camera",
+                    name = "360° Aim Look Camera",
                     type = "AIM_LOOK",
-                    keyCode = 0,
-                    keyLabel = "Mouse",
+                    keyCode = KeyEvent.KEYCODE_GRAVE,
+                    keyLabel = "GRAVE (~)",
                     normalizedX = 0.72f,
-                    normalizedY = 0.45f,
+                    normalizedY = 0.48f,
                     normalizedWidth = 0.40f,
                     normalizedHeight = 0.45f,
                     sensitivity = 1.2f
@@ -135,8 +185,21 @@ abstract class VitualEmuDatabase : RoomDatabase() {
                 MappingEntity(
                     id = UUID.randomUUID().toString(),
                     profileId = codProfileId,
-                    name = "Fire Weapon",
-                    type = "TAP",
+                    name = "Free Look (Eye Button)",
+                    type = "FREE_LOOK_EYE",
+                    keyCode = KeyEvent.KEYCODE_ALT_LEFT,
+                    keyLabel = "ALT_LEFT",
+                    normalizedX = 0.80f,
+                    normalizedY = 0.25f,
+                    normalizedWidth = 0.07f,
+                    normalizedHeight = 0.07f,
+                    sensitivity = 1.1f
+                ),
+                MappingEntity(
+                    id = UUID.randomUUID().toString(),
+                    profileId = codProfileId,
+                    name = "Primary Fire + Smart Drag",
+                    type = "FIRE_WEAPON",
                     keyCode = KeyEvent.KEYCODE_BUTTON_L1,
                     keyLabel = "Mouse LClick",
                     normalizedX = 0.85f,
@@ -162,9 +225,9 @@ abstract class VitualEmuDatabase : RoomDatabase() {
                     name = "Jump",
                     type = "TAP",
                     keyCode = KeyEvent.KEYCODE_SPACE,
-                    keyLabel = "Space",
+                    keyLabel = "SPACE",
                     normalizedX = 0.92f,
-                    normalizedY = 0.75f,
+                    normalizedY = 0.72f,
                     normalizedWidth = 0.07f,
                     normalizedHeight = 0.07f
                 ),
@@ -176,7 +239,7 @@ abstract class VitualEmuDatabase : RoomDatabase() {
                     keyCode = KeyEvent.KEYCODE_C,
                     keyLabel = "C",
                     normalizedX = 0.92f,
-                    normalizedY = 0.88f,
+                    normalizedY = 0.86f,
                     normalizedWidth = 0.07f,
                     normalizedHeight = 0.07f
                 ),
@@ -188,24 +251,44 @@ abstract class VitualEmuDatabase : RoomDatabase() {
                     keyCode = KeyEvent.KEYCODE_R,
                     keyLabel = "R",
                     normalizedX = 0.75f,
-                    normalizedY = 0.85f,
+                    normalizedY = 0.86f,
                     normalizedWidth = 0.07f,
                     normalizedHeight = 0.07f
                 ),
                 MappingEntity(
                     id = UUID.randomUUID().toString(),
                     profileId = codProfileId,
-                    name = "Sprint Boost",
-                    type = "HOLD",
-                    keyCode = KeyEvent.KEYCODE_SHIFT_LEFT,
-                    keyLabel = "LShift",
-                    normalizedX = 0.20f,
-                    normalizedY = 0.50f,
-                    normalizedWidth = 0.06f,
-                    normalizedHeight = 0.06f
+                    name = "Quick Slide Combo",
+                    type = "MACRO_TRIGGER",
+                    keyCode = KeyEvent.KEYCODE_Q,
+                    keyLabel = "Q",
+                    normalizedX = 0.66f,
+                    normalizedY = 0.84f,
+                    normalizedWidth = 0.07f,
+                    normalizedHeight = 0.07f,
+                    macroId = glooMacroId
                 )
             )
             db.mappingDao().insertMappings(codMappings)
+
+            // Seed Free Fire Pro Headshot & Gloo Wall profile
+            val ffProfileId = "profile-ff-pro"
+            db.profileDao().insertProfile(
+                ProfileEntity(
+                    profileId = ffProfileId,
+                    gameId = gameFreeFireId,
+                    name = "Free Fire Pro (Gloo Wall + Smart Drag)",
+                    isFavorite = true
+                )
+            )
+            db.mappingDao().insertMappings(
+                codMappings.map {
+                    it.copy(
+                        id = UUID.randomUUID().toString(),
+                        profileId = ffProfileId
+                    )
+                }
+            )
         }
     }
 }

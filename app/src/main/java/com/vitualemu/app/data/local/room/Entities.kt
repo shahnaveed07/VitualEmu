@@ -35,10 +35,11 @@ data class ProfileEntity(
     @PrimaryKey val profileId: String,
     val gameId: String,
     val name: String,
-    val schemaVersion: Int = 1,
+    val schemaVersion: Int = 2,
     val isFavorite: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    val mouseLookJson: String = ""
 )
 
 @Entity(
@@ -62,6 +63,8 @@ data class MappingEntity(
     val keyLabel: String,
     val normalizedX: Float,
     val normalizedY: Float,
+    val endNormalizedX: Float = normalizedX,
+    val endNormalizedY: Float = normalizedY,
     val normalizedWidth: Float,
     val normalizedHeight: Float,
     val sensitivity: Float = 1.0f,
@@ -87,7 +90,10 @@ data class MacroEntity(
     val name: String,
     val triggerKeyCode: Int,
     val triggerKeyLabel: String,
-    val isLooping: Boolean = false
+    val chordModifierKeyCode: Int = 0,
+    val triggerMode: String = "ON_PRESS",
+    val isLooping: Boolean = false,
+    val maxLoopIterations: Int = 10
 )
 
 @Entity(
@@ -109,6 +115,8 @@ data class MacroStepEntity(
     val actionType: String,
     val normalizedX: Float,
     val normalizedY: Float,
+    val endNormalizedX: Float = normalizedX,
+    val endNormalizedY: Float = normalizedY,
     val delayMs: Long,
     val holdDurationMs: Long
 )

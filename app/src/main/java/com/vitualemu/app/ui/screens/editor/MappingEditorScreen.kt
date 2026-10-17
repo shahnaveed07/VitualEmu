@@ -11,9 +11,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -28,13 +30,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.GridOn
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Mouse
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -53,26 +55,23 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.nativeKeyCode
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
@@ -80,12 +79,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.vitualemu.app.domain.model.Macro
+import com.vitualemu.app.domain.model.MacroStep
+import com.vitualemu.app.domain.model.MacroTriggerMode
 import com.vitualemu.app.domain.model.Mapping
 import com.vitualemu.app.domain.model.MappingType
+import com.vitualemu.app.domain.model.MouseLookConfig
 import com.vitualemu.app.domain.validation.ValidationRules
 import com.vitualemu.app.ui.VitualEmuViewModel
 import com.vitualemu.app.ui.components.KeyCapChip
-import com.vitualemu.app.ui.components.StatusBadge
 import com.vitualemu.app.ui.theme.ElectricBlue
 import com.vitualemu.app.ui.theme.MidnightBlue
 import com.vitualemu.app.ui.theme.SlateBorder
@@ -112,8 +114,11 @@ fun MappingEditorScreen(
     var isSnapToGrid by remember { mutableStateOf(false) }
     var showKeyCaptureDialog by remember { mutableStateOf(false) }
     var showAddControlDialog by remember { mutableStateOf(false) }
+    var inspectorTab by remember { mutableIntStateOf(0) }
 
     val mappings = activeProfile?.mappings ?: emptyList()
+    val macros = activeProfile?.macros ?: emptyList()
+    val mouseLookConfig = activeProfile?.mouseLookConfig ?: MouseLookConfig()
     val selectedMapping = mappings.find { it.id == selectedMappingId }
     val conflicts = remember(mappings) { ValidationRules.findConflicts(mappings) }
 
@@ -122,34 +127,58 @@ fun MappingEditorScreen(
             .fillMaxSize()
             .background(MidnightBlue)
     ) {
-        // Top App Bar
-        TopAppBar(
-            title = {
-                Column {
-                    Text(
-                        text = "Canvas Editor: ${activeProfile?.name ?: "No Profile"}",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "Game: ${activeGame?.displayName ?: "Unassigned"}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFF94A3B8)
-                    )
-                }
-            },
-            navigationIcon = {
-                IconButton(onClick = onBack) {
+        // Compact Landscape Header Bar
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(SlateNavy)
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Back",
                         tint = Color.White
                     )
                 }
-            },
-            actions = {
-                // Snap-to-grid toggle
+                Spacer(modifier = Modifier.width(6.dp))
+                Column {
+                    Text(
+                        text = "Canvas Editor: ${activeProfile?.name ?: "No Profile"}",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "${activeGame?.displayName ?: "Unassigned"} • ${mappings.size} controls • 10-Pointer Engine",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFF94A3B8)
+                    )
+                }
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (conflicts.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .background(StatusAmber.copy(alpha = 0.2f), RoundedCornerShape(6.dp))
+                            .border(1.dp, StatusAmber.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(imageVector = Icons.Default.Warning, contentDescription = null, tint = StatusAmber, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "${conflicts.size} key conflict(s)",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFFFDE68A)
+                        )
+                    }
+                }
+
                 IconButton(onClick = { isSnapToGrid = !isSnapToGrid }) {
                     Icon(
                         imageVector = Icons.Default.GridOn,
@@ -157,207 +186,217 @@ fun MappingEditorScreen(
                         tint = if (isSnapToGrid) ElectricBlue else Color(0xFF64748B)
                     )
                 }
-                // Add new mapping
                 IconButton(onClick = { showAddControlDialog = true }) {
                     Icon(imageVector = Icons.Default.Add, contentDescription = "Add Control", tint = ElectricBlue)
                 }
-                // Save Profile
                 IconButton(onClick = {
                     activeProfile?.let { viewModel.updateActiveProfile(it) }
-                    viewModel.showFeedback("Canvas mappings saved")
+                    viewModel.showFeedback("Canvas mappings & Mouse-Look settings saved")
                 }) {
                     Icon(imageVector = Icons.Default.Save, contentDescription = "Save", tint = StatusEmerald)
-                }
-            },
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = SlateNavy)
-        )
-
-        // Conflict warning banner
-        if (conflicts.isNotEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(StatusAmber.copy(alpha = 0.2f))
-                    .border(1.dp, StatusAmber.copy(alpha = 0.5f))
-                    .padding(horizontal = 16.dp, vertical = 6.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(imageVector = Icons.Default.Warning, contentDescription = null, tint = StatusAmber, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "${conflicts.size} duplicate key conflict(s): ${conflicts.first().description}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFFFDE68A)
-                    )
                 }
             }
         }
 
-        // Scrollable container for Canvas + Inspector
-        Column(
+        // Landscape Split-Pane Body: Left = Largest 16:9 Canvas, Right = Tabbed Inspector
+        Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(12.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // 16:9 Game Screen Canvas Container
+            // Left Pane: Interactive 16:9 Game Overlay Canvas
             Card(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(16f / 9f)
+                    .weight(1.65f)
+                    .fillMaxHeight()
                     .border(1.dp, SlateBorder, RoundedCornerShape(12.dp)),
                 shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF090D16))
             ) {
-                BoxWithConstraints(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .pointerInput(Unit) {
-                            detectTapGestures {
-                                // Tapping empty canvas deselects
-                                selectedMappingId = null
-                            }
-                        }
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
                 ) {
-                    val canvasWidth = maxWidth
-                    val canvasHeight = maxHeight
-
-                    // Grid lines (if snap enabled)
-                    if (isSnapToGrid) {
-                        Canvas(modifier = Modifier.fillMaxSize()) {
-                            val stepX = size.width / 10f
-                            val stepY = size.height / 10f
-                            for (i in 1..9) {
-                                drawLine(
-                                    color = Color(0xFF1E293B),
-                                    start = Offset(stepX * i, 0f),
-                                    end = Offset(stepX * i, size.height),
-                                    strokeWidth = 1f
-                                )
-                                drawLine(
-                                    color = Color(0xFF1E293B),
-                                    start = Offset(0f, stepY * i),
-                                    end = Offset(size.width, stepY * i),
-                                    strokeWidth = 1f
-                                )
+                    BoxWithConstraints(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .aspectRatio(16f / 9f, matchHeightConstraintsFirst = true)
+                            .pointerInput(Unit) {
+                                detectTapGestures {
+                                    selectedMappingId = null
+                                }
+                            }
+                    ) {
+                        if (isSnapToGrid) {
+                            Canvas(modifier = Modifier.fillMaxSize()) {
+                                val stepX = size.width / 10f
+                                val stepY = size.height / 10f
+                                for (i in 1..9) {
+                                    drawLine(
+                                        color = Color(0xFF1E293B),
+                                        start = Offset(stepX * i, 0f),
+                                        end = Offset(stepX * i, size.height),
+                                        strokeWidth = 1f
+                                    )
+                                    drawLine(
+                                        color = Color(0xFF1E293B),
+                                        start = Offset(0f, stepY * i),
+                                        end = Offset(size.width, stepY * i),
+                                        strokeWidth = 1f
+                                    )
+                                }
                             }
                         }
-                    }
 
-                    // Render Draggable Control Markers
-                    for (mapping in mappings) {
-                        val isSelected = mapping.id == selectedMappingId
-                        val markerX = (mapping.normalizedX * (canvasWidth.value)).dp
-                        val markerY = (mapping.normalizedY * (canvasHeight.value)).dp
+                        // Render Draggable Control Markers
+                        for (mapping in mappings) {
+                            val isSelected = mapping.id == selectedMappingId
 
-                        Box(
-                            modifier = Modifier
-                                .offset {
-                                    IntOffset(
-                                        x = (mapping.normalizedX * constraints.maxWidth).roundToInt(),
-                                        y = (mapping.normalizedY * constraints.maxHeight).roundToInt()
-                                    )
-                                }
-                                .pointerInput(mapping.id) {
-                                    detectTapGestures(
-                                        onTap = { selectedMappingId = mapping.id }
-                                    )
-                                }
-                                .pointerInput(mapping.id) {
-                                    detectDragGestures { change, dragAmount ->
-                                        change.consume()
-                                        var newNormX = mapping.normalizedX + (dragAmount.x / constraints.maxWidth)
-                                        var newNormY = mapping.normalizedY + (dragAmount.y / constraints.maxHeight)
-
-                                        if (isSnapToGrid) {
-                                            newNormX = (newNormX * 20f).roundToInt() / 20f
-                                            newNormY = (newNormY * 20f).roundToInt() / 20f
-                                        }
-
-                                        newNormX = ValidationRules.clampCoordinate(newNormX)
-                                        newNormY = ValidationRules.clampCoordinate(newNormY)
-
-                                        viewModel.updateMapping(
-                                            mapping.copy(normalizedX = newNormX, normalizedY = newNormY)
+                            Box(
+                                modifier = Modifier
+                                    .offset {
+                                        IntOffset(
+                                            x = (mapping.normalizedX * constraints.maxWidth).roundToInt(),
+                                            y = (mapping.normalizedY * constraints.maxHeight).roundToInt()
                                         )
                                     }
-                                }
-                        ) {
-                            when (mapping.type) {
-                                MappingType.WASD_STICK -> {
-                                    // WASD Directional Pad Visual
-                                    Box(
-                                        modifier = Modifier
-                                            .size(72.dp)
-                                            .offset(x = (-36).dp, y = (-36).dp)
-                                            .background(
-                                                if (isSelected) ElectricBlue.copy(alpha = 0.35f) else Color(0x3338BDF8),
-                                                CircleShape
+                                    .pointerInput(mapping.id) {
+                                        detectTapGestures(
+                                            onTap = {
+                                                selectedMappingId = mapping.id
+                                                inspectorTab = 0
+                                            }
+                                        )
+                                    }
+                                    .pointerInput(mapping.id) {
+                                        detectDragGestures { change, dragAmount ->
+                                            change.consume()
+                                            var newNormX = mapping.normalizedX + (dragAmount.x / constraints.maxWidth)
+                                            var newNormY = mapping.normalizedY + (dragAmount.y / constraints.maxHeight)
+
+                                            if (isSnapToGrid) {
+                                                newNormX = (newNormX * 20f).roundToInt() / 20f
+                                                newNormY = (newNormY * 20f).roundToInt() / 20f
+                                            }
+
+                                            newNormX = ValidationRules.clampCoordinate(newNormX)
+                                            newNormY = ValidationRules.clampCoordinate(newNormY)
+
+                                            viewModel.updateMapping(
+                                                mapping.copy(normalizedX = newNormX, normalizedY = newNormY)
                                             )
-                                            .border(
-                                                2.dp,
-                                                if (isSelected) ElectricBlue else Color(0x8838BDF8),
-                                                CircleShape
-                                            ),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                            Text("W", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                                            Row {
-                                                Text("A ", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                                                Text("S ", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                                                Text("D", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                        }
+                                    }
+                            ) {
+                                when (mapping.type) {
+                                    MappingType.WASD_STICK -> {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(68.dp)
+                                                .offset(x = (-34).dp, y = (-34).dp)
+                                                .background(
+                                                    if (isSelected) ElectricBlue.copy(alpha = 0.35f) else Color(0x3338BDF8),
+                                                    CircleShape
+                                                )
+                                                .border(
+                                                    2.dp,
+                                                    if (isSelected) ElectricBlue else Color(0x8838BDF8),
+                                                    CircleShape
+                                                ),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                Text("W", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                                Row {
+                                                    Text("A ", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                                    Text("S ", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                                    Text("D", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                                }
                                             }
                                         }
                                     }
-                                }
-                                MappingType.AIM_LOOK -> {
-                                    // Aim Region Visual
-                                    Box(
-                                        modifier = Modifier
-                                            .size(90.dp)
-                                            .offset(x = (-45).dp, y = (-45).dp)
-                                            .background(
-                                                if (isSelected) Color(0x44F59E0B) else Color(0x22F59E0B),
-                                                RoundedCornerShape(8.dp)
-                                            )
-                                            .border(
-                                                1.dp,
-                                                if (isSelected) StatusAmber else Color(0x66F59E0B),
-                                                RoundedCornerShape(8.dp)
-                                            ),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                            Icon(imageVector = Icons.Default.Mouse, contentDescription = null, tint = StatusAmber, modifier = Modifier.size(20.dp))
-                                            Text("Aim Look", color = StatusAmber, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                    MappingType.AIM_LOOK -> {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(84.dp)
+                                                .offset(x = (-42).dp, y = (-42).dp)
+                                                .background(
+                                                    if (isSelected) Color(0x44F59E0B) else Color(0x22F59E0B),
+                                                    RoundedCornerShape(10.dp)
+                                                )
+                                                .border(
+                                                    1.5.dp,
+                                                    if (isSelected) StatusAmber else Color(0x66F59E0B),
+                                                    RoundedCornerShape(10.dp)
+                                                ),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                Icon(imageVector = Icons.Default.Mouse, contentDescription = null, tint = StatusAmber, modifier = Modifier.size(18.dp))
+                                                Text("360° Aim", color = StatusAmber, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                            }
                                         }
                                     }
-                                }
-                                else -> {
-                                    // Button / Tap / Hold Control Visual
-                                    Box(
-                                        modifier = Modifier
-                                            .size(44.dp)
-                                            .offset(x = (-22).dp, y = (-22).dp)
-                                            .background(
-                                                if (isSelected) ElectricBlue else SlateNavy,
-                                                CircleShape
+                                    MappingType.FREE_LOOK_EYE -> {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(46.dp)
+                                                .offset(x = (-23).dp, y = (-23).dp)
+                                                .background(
+                                                    if (isSelected) StatusAmber.copy(alpha = 0.4f) else Color(0x33F59E0B),
+                                                    CircleShape
+                                                )
+                                                .border(1.5.dp, StatusAmber, CircleShape),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                Icon(imageVector = Icons.Default.Visibility, contentDescription = null, tint = StatusAmber, modifier = Modifier.size(14.dp))
+                                                Text(mapping.keyLabel.ifBlank { "ALT" }, color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                    MappingType.FIRE_WEAPON -> {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(48.dp)
+                                                .offset(x = (-24).dp, y = (-24).dp)
+                                                .background(
+                                                    if (isSelected) StatusCrimson else StatusCrimson.copy(alpha = 0.35f),
+                                                    CircleShape
+                                                )
+                                                .border(1.5.dp, Color.White, CircleShape),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                Icon(imageVector = Icons.Default.GpsFixed, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                                                Text(mapping.keyLabel.ifBlank { "Fire" }, color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                    else -> {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(42.dp)
+                                                .offset(x = (-21).dp, y = (-21).dp)
+                                                .background(
+                                                    if (isSelected) ElectricBlue else SlateNavy,
+                                                    CircleShape
+                                                )
+                                                .border(
+                                                    1.5.dp,
+                                                    if (isSelected) Color.White else SlateBorder,
+                                                    CircleShape
+                                                ),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = mapping.keyLabel.ifBlank { "?" },
+                                                color = if (isSelected) MidnightBlue else Color.White,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 10.sp
                                             )
-                                            .border(
-                                                1.5.dp,
-                                                if (isSelected) Color.White else SlateBorder,
-                                                CircleShape
-                                            ),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = mapping.keyLabel.ifBlank { "?" },
-                                            color = if (isSelected) MidnightBlue else Color.White,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 11.sp
-                                        )
+                                        }
                                     }
                                 }
                             }
@@ -366,155 +405,351 @@ fun MappingEditorScreen(
                 }
             }
 
-            // Real-Time Coordinate Inspector & Controls Panel
-            selectedMapping?.let { sm ->
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, SlateBorder, RoundedCornerShape(12.dp)),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = SlateNavy)
-                ) {
+            // Right Pane: Tabbed Inspector (Controls | Mouse 360° | Macros)
+            Card(
+                modifier = Modifier
+                    .weight(1.0f)
+                    .fillMaxHeight()
+                    .border(1.dp, SlateBorder, RoundedCornerShape(12.dp)),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = SlateNavy)
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    TabRow(
+                        selectedTabIndex = inspectorTab,
+                        containerColor = Color(0xFF0F172A),
+                        contentColor = ElectricBlue
+                    ) {
+                        Tab(
+                            selected = inspectorTab == 0,
+                            onClick = { inspectorTab = 0 },
+                            text = { Text("Control", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        )
+                        Tab(
+                            selected = inspectorTab == 1,
+                            onClick = { inspectorTab = 1 },
+                            text = { Text("Mouse 360°", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        )
+                        Tab(
+                            selected = inspectorTab == 2,
+                            onClick = { inspectorTab = 2 },
+                            text = { Text("Macros (${macros.size})", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        )
+                    }
+
                     Column(
-                        modifier = Modifier.padding(14.dp),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(12.dp)
+                            .verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
+                        when (inspectorTab) {
+                            0 -> {
+                                selectedMapping?.let { sm ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "SELECTED: ${sm.name}",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White
+                                            )
+                                            Text(
+                                                text = "Type: ${sm.type.label}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = Color(0xFF94A3B8)
+                                            )
+                                        }
+                                        IconButton(onClick = {
+                                            viewModel.removeMapping(sm.id)
+                                            selectedMappingId = null
+                                        }) {
+                                            Icon(imageVector = Icons.Default.Delete, contentDescription = "Delete", tint = StatusCrimson)
+                                        }
+                                    }
+
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(Color(0xFF0F172A), RoundedCornerShape(8.dp))
+                                            .padding(10.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column {
+                                                Text("BOUND PHYSICAL INPUT", style = MaterialTheme.typography.labelSmall, color = Color(0xFF64748B))
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                KeyCapChip(label = sm.keyLabel.ifBlank { "Unbound (Key: ${sm.keyCode})" }, highlighted = true)
+                                            }
+
+                                            Button(
+                                                onClick = { showKeyCaptureDialog = true },
+                                                colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue),
+                                                shape = RoundedCornerShape(8.dp),
+                                                modifier = Modifier.testTag("bind_physical_key_button")
+                                            ) {
+                                                Icon(imageVector = Icons.Default.Keyboard, contentDescription = null, modifier = Modifier.size(14.dp), tint = MidnightBlue)
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("Bind Input", color = MidnightBlue, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                            }
+                                        }
+                                    }
+
+                                    Text(
+                                        text = "Normalized Position: X=%.3f, Y=%.3f".format(sm.normalizedX, sm.normalizedY),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color(0xFFCBD5E1)
+                                    )
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                viewModel.updateMapping(
+                                                    sm.copy(normalizedX = ValidationRules.clampCoordinate(sm.normalizedX - 0.01f))
+                                                )
+                                            },
+                                            contentPadding = PaddingValues(4.dp),
+                                            modifier = Modifier.size(34.dp)
+                                        ) { Text("←", fontSize = 12.sp) }
+
+                                        OutlinedButton(
+                                            onClick = {
+                                                viewModel.updateMapping(
+                                                    sm.copy(normalizedX = ValidationRules.clampCoordinate(sm.normalizedX + 0.01f))
+                                                )
+                                            },
+                                            contentPadding = PaddingValues(4.dp),
+                                            modifier = Modifier.size(34.dp)
+                                        ) { Text("→", fontSize = 12.sp) }
+
+                                        OutlinedButton(
+                                            onClick = {
+                                                viewModel.updateMapping(
+                                                    sm.copy(normalizedY = ValidationRules.clampCoordinate(sm.normalizedY - 0.01f))
+                                                )
+                                            },
+                                            contentPadding = PaddingValues(4.dp),
+                                            modifier = Modifier.size(34.dp)
+                                        ) { Text("↑", fontSize = 12.sp) }
+
+                                        OutlinedButton(
+                                            onClick = {
+                                                viewModel.updateMapping(
+                                                    sm.copy(normalizedY = ValidationRules.clampCoordinate(sm.normalizedY + 0.01f))
+                                                )
+                                            },
+                                            contentPadding = PaddingValues(4.dp),
+                                            modifier = Modifier.size(34.dp)
+                                        ) { Text("↓", fontSize = 12.sp) }
+                                    }
+
+                                    if (sm.type == MappingType.AIM_LOOK || sm.type == MappingType.FREE_LOOK_EYE) {
+                                        Text("Sensitivity: ${"%.1f".format(sm.sensitivity)}x", style = MaterialTheme.typography.labelSmall, color = Color(0xFFCBD5E1))
+                                        Slider(
+                                            value = sm.sensitivity,
+                                            onValueChange = { s -> viewModel.updateMapping(sm.copy(sensitivity = s)) },
+                                            valueRange = 0.2f..4.0f,
+                                            colors = SliderDefaults.colors(thumbColor = ElectricBlue, activeTrackColor = ElectricBlue)
+                                        )
+                                    }
+                                } ?: run {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(Color(0xFF0F172A), RoundedCornerShape(10.dp))
+                                            .padding(12.dp)
+                                    ) {
+                                        Text(
+                                            text = "Tap any control on the 16:9 canvas to inspect coordinates, fine-tune position, or bind a physical keyboard/mouse input.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = Color(0xFF94A3B8)
+                                        )
+                                    }
+                                }
+                            }
+
+                            1 -> {
+                                // Mouse-Look 360°, Free-Look Eye, & Smart Drag Inspector
                                 Text(
-                                    text = "SELECTED: ${sm.name}",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
+                                    text = "FPS SHOOTING MODE & 360° RESET",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = ElectricBlue,
+                                    fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = "Type: ${sm.type.label}",
+                                    text = "Toggle Key: ${mouseLookConfig.toggleKeyLabel}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.White
+                                )
+
+                                Text("X Sensitivity: ${"%.2f".format(mouseLookConfig.sensitivityX)}", style = MaterialTheme.typography.labelSmall, color = Color(0xFFCBD5E1))
+                                Slider(
+                                    value = mouseLookConfig.sensitivityX,
+                                    onValueChange = { viewModel.updateMouseLookConfig(mouseLookConfig.copy(sensitivityX = it)) },
+                                    valueRange = 0.2f..3.5f,
+                                    colors = SliderDefaults.colors(thumbColor = ElectricBlue, activeTrackColor = ElectricBlue)
+                                )
+
+                                Text("Y Sensitivity: ${"%.2f".format(mouseLookConfig.sensitivityY)}", style = MaterialTheme.typography.labelSmall, color = Color(0xFFCBD5E1))
+                                Slider(
+                                    value = mouseLookConfig.sensitivityY,
+                                    onValueChange = { viewModel.updateMouseLookConfig(mouseLookConfig.copy(sensitivityY = it)) },
+                                    valueRange = 0.2f..3.5f,
+                                    colors = SliderDefaults.colors(thumbColor = ElectricBlue, activeTrackColor = ElectricBlue)
+                                )
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text("Infinite 360° Edge Reset", color = Color.White, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                                        Text("Auto recenter Pointer 1 at screen bounds", color = Color(0xFF94A3B8), style = MaterialTheme.typography.labelSmall)
+                                    }
+                                    Switch(
+                                        checked = mouseLookConfig.autoEdgeReset,
+                                        onCheckedChange = { viewModel.updateMouseLookConfig(mouseLookConfig.copy(autoEdgeReset = it)) },
+                                        colors = SwitchDefaults.colors(checkedThumbColor = StatusEmerald)
+                                    )
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text("Free Look (Eye Button)", color = Color.White, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                                        Text("Hold ${mouseLookConfig.freeLookKeyLabel} to shift camera to Eye", color = Color(0xFF94A3B8), style = MaterialTheme.typography.labelSmall)
+                                    }
+                                    Switch(
+                                        checked = mouseLookConfig.freeLookEnabled,
+                                        onCheckedChange = { viewModel.updateMouseLookConfig(mouseLookConfig.copy(freeLookEnabled = it)) },
+                                        colors = SwitchDefaults.colors(checkedThumbColor = StatusAmber)
+                                    )
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text("Smart Drag (Aim Comp)", color = Color.White, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                                        Text("Vertical micro-drag while Primary Fire held", color = Color(0xFF94A3B8), style = MaterialTheme.typography.labelSmall)
+                                    }
+                                    Switch(
+                                        checked = mouseLookConfig.smartDragEnabled,
+                                        onCheckedChange = { viewModel.updateMouseLookConfig(mouseLookConfig.copy(smartDragEnabled = it)) },
+                                        colors = SwitchDefaults.colors(checkedThumbColor = ElectricBlue)
+                                    )
+                                }
+                            }
+
+                            2 -> {
+                                // Bounded Macro Builder Tab
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "BOUNDED MACROS",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = ElectricBlue,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Button(
+                                        onClick = {
+                                            val pid = activeProfile?.profileId ?: return@Button
+                                            val newMacroId = UUID.randomUUID().toString()
+                                            val quickGloo = Macro(
+                                                id = newMacroId,
+                                                profileId = pid,
+                                                name = "Gloo Wall + Crouch (#${macros.size + 1})",
+                                                triggerKeyCode = KeyEvent.KEYCODE_G,
+                                                triggerKeyLabel = "G",
+                                                triggerMode = MacroTriggerMode.ON_PRESS,
+                                                steps = listOf(
+                                                    MacroStep(
+                                                        macroId = newMacroId,
+                                                        stepIndex = 0,
+                                                        actionType = "TAP",
+                                                        normalizedX = 0.92f,
+                                                        normalizedY = 0.86f,
+                                                        delayMs = 24L,
+                                                        holdDurationMs = 40L
+                                                    ),
+                                                    MacroStep(
+                                                        macroId = newMacroId,
+                                                        stepIndex = 1,
+                                                        actionType = "TAP",
+                                                        normalizedX = 0.85f,
+                                                        normalizedY = 0.65f,
+                                                        delayMs = 32L,
+                                                        holdDurationMs = 45L
+                                                    )
+                                                )
+                                            )
+                                            viewModel.addMacro(quickGloo)
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue, contentColor = MidnightBlue),
+                                        shape = RoundedCornerShape(6.dp),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                        modifier = Modifier.height(28.dp)
+                                    ) {
+                                        Text("+ Quick Macro", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+
+                                Text(
+                                    text = "Safety Bounds: Max 32 steps • Min 16ms delay • Instant Safe-Stop cancel",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = Color(0xFF94A3B8)
                                 )
-                            }
-                            IconButton(onClick = {
-                                viewModel.removeMapping(sm.id)
-                                selectedMappingId = null
-                            }) {
-                                Icon(imageVector = Icons.Default.Delete, contentDescription = "Delete", tint = StatusCrimson)
-                            }
-                        }
 
-                        // Physical Binding Action
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(Color(0xFF0F172A), RoundedCornerShape(8.dp))
-                                .padding(10.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column {
-                                    Text("BOUND PHYSICAL INPUT", style = MaterialTheme.typography.labelSmall, color = Color(0xFF64748B))
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    KeyCapChip(label = sm.keyLabel.ifBlank { "Unbound (Key: ${sm.keyCode})" }, highlighted = true)
-                                }
-
-                                Button(
-                                    onClick = { showKeyCaptureDialog = true },
-                                    colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue),
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.testTag("bind_physical_key_button")
-                                ) {
-                                    Icon(imageVector = Icons.Default.Keyboard, contentDescription = null, modifier = Modifier.size(16.dp), tint = MidnightBlue)
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Bind Input", color = MidnightBlue, fontWeight = FontWeight.Bold)
+                                if (macros.isEmpty()) {
+                                    Text(
+                                        text = "No macros configured in this profile.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color(0xFF64748B)
+                                    )
+                                } else {
+                                    macros.forEach { macro ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(Color(0xFF0F172A), RoundedCornerShape(8.dp))
+                                                .border(1.dp, SlateBorder, RoundedCornerShape(8.dp))
+                                                .padding(8.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(macro.name, color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
+                                                Text(
+                                                    "Trigger: ${macro.triggerKeyLabel} (${macro.triggerMode.name}) • ${macro.steps.size} steps",
+                                                    color = Color(0xFF94A3B8),
+                                                    style = MaterialTheme.typography.labelSmall
+                                                )
+                                            }
+                                            IconButton(onClick = { viewModel.removeMacro(macro.id) }, modifier = Modifier.size(28.dp)) {
+                                                Icon(imageVector = Icons.Default.Delete, contentDescription = "Delete Macro", tint = StatusCrimson, modifier = Modifier.size(16.dp))
+                                            }
+                                        }
+                                    }
                                 }
                             }
-                        }
-
-                        // Fine-tuning Nudges (±0.01)
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Normalized Position: X=%.3f, Y=%.3f".format(sm.normalizedX, sm.normalizedY),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color(0xFFCBD5E1)
-                            )
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                OutlinedButton(
-                                    onClick = {
-                                        viewModel.updateMapping(
-                                            sm.copy(normalizedX = ValidationRules.clampCoordinate(sm.normalizedX - 0.01f))
-                                        )
-                                    },
-                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp),
-                                    modifier = Modifier.size(32.dp)
-                                ) { Text("←", fontSize = 12.sp) }
-
-                                OutlinedButton(
-                                    onClick = {
-                                        viewModel.updateMapping(
-                                            sm.copy(normalizedX = ValidationRules.clampCoordinate(sm.normalizedX + 0.01f))
-                                        )
-                                    },
-                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp),
-                                    modifier = Modifier.size(32.dp)
-                                ) { Text("→", fontSize = 12.sp) }
-
-                                OutlinedButton(
-                                    onClick = {
-                                        viewModel.updateMapping(
-                                            sm.copy(normalizedY = ValidationRules.clampCoordinate(sm.normalizedY - 0.01f))
-                                        )
-                                    },
-                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp),
-                                    modifier = Modifier.size(32.dp)
-                                ) { Text("↑", fontSize = 12.sp) }
-
-                                OutlinedButton(
-                                    onClick = {
-                                        viewModel.updateMapping(
-                                            sm.copy(normalizedY = ValidationRules.clampCoordinate(sm.normalizedY + 0.01f))
-                                        )
-                                    },
-                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp),
-                                    modifier = Modifier.size(32.dp)
-                                ) { Text("↓", fontSize = 12.sp) }
-                            }
-                        }
-
-                        // Sensitivity (for Aim / Mouse Look)
-                        if (sm.type == MappingType.AIM_LOOK) {
-                            Text("Sensitivity: ${"%.1f".format(sm.sensitivity)}x", style = MaterialTheme.typography.labelSmall, color = Color(0xFFCBD5E1))
-                            Slider(
-                                value = sm.sensitivity,
-                                onValueChange = { s -> viewModel.updateMapping(sm.copy(sensitivity = s)) },
-                                valueRange = 0.2f..4.0f,
-                                colors = SliderDefaults.colors(thumbColor = ElectricBlue, activeTrackColor = ElectricBlue)
-                            )
                         }
                     }
-                }
-            } ?: run {
-                // Hint when nothing is selected
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color(0xFF0F172A), RoundedCornerShape(10.dp))
-                        .padding(14.dp)
-                ) {
-                    Text(
-                        text = "Tap any control on the canvas to inspect coordinates, fine-tune position, or bind a physical keyboard/mouse input.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF94A3B8)
-                    )
                 }
             }
         }
@@ -540,7 +775,7 @@ fun MappingEditorScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(180.dp)
+                        .height(140.dp)
                         .background(Color(0xFF0F172A), RoundedCornerShape(12.dp))
                         .border(1.dp, SlateBorder, RoundedCornerShape(12.dp))
                         .focusRequester(focusRequester)
@@ -553,7 +788,6 @@ fun MappingEditorScreen(
                         }
                         .pointerInput(Unit) {
                             detectTapGestures {
-                                // Mouse tap capture
                                 capturedKeyCode = KeyEvent.KEYCODE_BUTTON_L1
                                 capturedKeyLabel = "Mouse LClick"
                             }
@@ -564,15 +798,14 @@ fun MappingEditorScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {
-                        Icon(imageVector = Icons.Default.Keyboard, contentDescription = null, tint = ElectricBlue, modifier = Modifier.size(36.dp))
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Icon(imageVector = Icons.Default.Keyboard, contentDescription = null, tint = ElectricBlue, modifier = Modifier.size(32.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
                         Text(
                             text = if (capturedKeyLabel != null) "Detected: $capturedKeyLabel" else "Press any key on physical keyboard\nor click mouse button...",
                             fontWeight = FontWeight.Bold,
                             color = if (capturedKeyLabel != null) StatusEmerald else Color.White,
-                            style = MaterialTheme.typography.bodyMedium
+                            style = MaterialTheme.typography.bodySmall
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = if (capturedKeyCode != null) "Native KeyCode: $capturedKeyCode" else "Listening for hardware events",
                             style = MaterialTheme.typography.labelSmall,
@@ -617,11 +850,12 @@ fun MappingEditorScreen(
             onDismissRequest = { showAddControlDialog = false },
             title = { Text("Add Virtual Control", fontWeight = FontWeight.Bold, color = Color.White) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = newName,
                         onValueChange = { newName = it },
-                        label = { Text("Control Name (e.g. Fire, Jump, Ability)") },
+                        label = { Text("Control Name (e.g. Fire, Gloo Wall, Eye)") },
+                        singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
 
@@ -630,11 +864,16 @@ fun MappingEditorScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        MappingType.values().take(4).forEach { type ->
+                        listOf(
+                            MappingType.TAP,
+                            MappingType.HOLD,
+                            MappingType.FIRE_WEAPON,
+                            MappingType.FREE_LOOK_EYE
+                        ).forEach { type ->
                             FilterChip(
                                 selected = selectedType == type,
                                 onClick = { selectedType = type },
-                                label = { Text(type.name, fontSize = 10.sp) },
+                                label = { Text(type.name.take(8), fontSize = 10.sp) },
                                 colors = FilterChipDefaults.filterChipColors(
                                     selectedContainerColor = ElectricBlue,
                                     selectedLabelColor = MidnightBlue

@@ -19,8 +19,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -31,12 +29,16 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -53,7 +55,6 @@ import com.vitualemu.app.ui.theme.MidnightBlue
 import com.vitualemu.app.ui.theme.SlateBorder
 import com.vitualemu.app.ui.theme.SlateNavy
 import com.vitualemu.app.ui.theme.StatusAmber
-import com.vitualemu.app.ui.theme.StatusCrimson
 import com.vitualemu.app.ui.theme.StatusEmerald
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -66,6 +67,8 @@ fun ActivationWizardScreen(
     BackHandler { onBack() }
 
     val bridgeStatus by viewModel.bridgeStatus.collectAsState()
+    var pairingPortInput by remember { mutableStateOf("5555") }
+    var pairingCodeInput by remember { mutableStateOf("") }
 
     Column(
         modifier = modifier
@@ -94,7 +97,7 @@ fun ActivationWizardScreen(
                 .fillMaxSize()
                 .padding(16.dp)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             // Live Status Header
             Card(
@@ -104,32 +107,37 @@ fun ActivationWizardScreen(
                 shape = RoundedCornerShape(14.dp),
                 colors = CardDefaults.cardColors(containerColor = SlateNavy)
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("CURRENT BRIDGE STATUS", style = MaterialTheme.typography.labelSmall, color = Color(0xFF94A3B8), fontWeight = FontWeight.Bold)
-                        StatusBadge(
-                            text = if (bridgeStatus.state == BridgeHealthState.CONNECTED) "READY / AUTHORIZED" else "ACTION REQUIRED",
-                            color = if (bridgeStatus.state == BridgeHealthState.CONNECTED) StatusEmerald else StatusAmber
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("CURRENT BRIDGE STATUS", style = MaterialTheme.typography.labelSmall, color = Color(0xFF94A3B8), fontWeight = FontWeight.Bold)
+                            StatusBadge(
+                                text = if (bridgeStatus.state == BridgeHealthState.CONNECTED) "READY / AUTHORIZED" else "ACTION REQUIRED",
+                                color = if (bridgeStatus.state == BridgeHealthState.CONNECTED) StatusEmerald else StatusAmber
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = bridgeStatus.type.displayName,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Text(
+                            text = bridgeStatus.detailMessage,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFFCBD5E1)
                         )
                     }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = bridgeStatus.type.displayName,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    Text(
-                        text = bridgeStatus.detailMessage,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFFCBD5E1)
-                    )
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
+
                     Button(
                         onClick = { viewModel.refreshBridgeHealth() },
                         colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue),
@@ -141,77 +149,111 @@ fun ActivationWizardScreen(
                 }
             }
 
-            // Method 1: Shizuku (Recommended)
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(1.dp, if (bridgeStatus.type == BridgeType.SHIZUKU) ElectricBlue else SlateBorder, RoundedCornerShape(14.dp)),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = SlateNavy)
+            // Landscape Side-by-Side Bridge Candidates
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.Top
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Method 1: Shizuku (Recommended)", fontWeight = FontWeight.Bold, color = Color.White, style = MaterialTheme.typography.titleSmall)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        StatusBadge("Low Latency (~6ms)", color = StatusEmerald, showDot = false)
+                // Method 1: Shizuku (Recommended)
+                Card(
+                    modifier = Modifier
+                        .weight(1f)
+                        .border(1.dp, if (bridgeStatus.type == BridgeType.SHIZUKU) ElectricBlue else SlateBorder, RoundedCornerShape(14.dp)),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = SlateNavy)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Method 1: Shizuku (Recommended)", fontWeight = FontWeight.Bold, color = Color.White, style = MaterialTheme.typography.titleSmall)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            StatusBadge("Low Latency (~4ms)", color = StatusEmerald, showDot = false)
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "Shizuku provides a privileged Android Binder service allowing 10-pointer multi-touch injection without PC tethering.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFF94A3B8)
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        StepItem(number = "1", title = "Install Shizuku", desc = "Install Shizuku from GitHub or Google Play Store.")
+                        StepItem(number = "2", title = "Start via Wireless Debugging", desc = "Enable Developer Options > Wireless Debugging. Pair and start Shizuku.")
+                        StepItem(number = "3", title = "Authorize VitualEmu", desc = "Open Shizuku app, tap 'Authorized applications', and grant VitualEmu access.")
+
+                        Spacer(modifier = Modifier.height(10.dp))
+                        OutlinedButton(
+                            onClick = { viewModel.setBridge(BridgeType.SHIZUKU) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Select Shizuku as Active Bridge")
+                        }
                     }
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "Shizuku provides a privileged Android Binder service allowing low-latency virtual touch injection without PC tethering.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF94A3B8)
-                    )
+                }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                // Method 2: Wireless Debugging ADB with Ephemeral Pairing
+                Card(
+                    modifier = Modifier
+                        .weight(1f)
+                        .border(1.dp, if (bridgeStatus.type == BridgeType.ROOTLESS_WIRELESS_DEBUGGING) ElectricBlue else SlateBorder, RoundedCornerShape(14.dp)),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = SlateNavy)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("Method 2: Rootless Wireless Debugging (ADB)", fontWeight = FontWeight.Bold, color = Color.White, style = MaterialTheme.typography.titleSmall)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "Direct localhost ADB socket daemon. Pairing code is processed in-memory only and never persisted to disk.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFF94A3B8)
+                        )
 
-                    StepItem(number = "1", title = "Install Shizuku", desc = "Install Shizuku from GitHub or Google Play Store.")
-                    StepItem(number = "2", title = "Start via Wireless Debugging", desc = "Enable Developer Options > Wireless Debugging. Pair and start Shizuku.")
-                    StepItem(number = "3", title = "Authorize VitualEmu", desc = "Open Shizuku app, tap 'Authorized applications', and grant VitualEmu access.")
+                        Spacer(modifier = Modifier.height(10.dp))
 
-                    Spacer(modifier = Modifier.height(10.dp))
-                    OutlinedButton(
-                        onClick = { viewModel.setBridge(BridgeType.SHIZUKU) },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Select Shizuku as Active Bridge")
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            OutlinedTextField(
+                                value = pairingPortInput,
+                                onValueChange = { pairingPortInput = it.filter { c -> c.isDigit() } },
+                                label = { Text("Port") },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f).testTag("adb_pairing_port_input")
+                            )
+                            OutlinedTextField(
+                                value = pairingCodeInput,
+                                onValueChange = { pairingCodeInput = it.filter { c -> c.isDigit() }.take(6) },
+                                label = { Text("6-Digit Code") },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f).testTag("adb_pairing_code_input")
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            OutlinedButton(
+                                onClick = { viewModel.setBridge(BridgeType.ROOTLESS_WIRELESS_DEBUGGING) },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Select ADB")
+                            }
+                            Button(
+                                onClick = {
+                                    val port = pairingPortInput.toIntOrNull() ?: 5555
+                                    viewModel.pairWirelessAdb(port, pairingCodeInput)
+                                    pairingCodeInput = ""
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue, contentColor = MidnightBlue),
+                                modifier = Modifier.weight(1f).testTag("pair_adb_button")
+                            ) {
+                                Text("Pair & Verify", fontWeight = FontWeight.Bold)
+                            }
+                        }
                     }
                 }
             }
 
-            // Method 2: Wireless Debugging ADB
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(1.dp, if (bridgeStatus.type == BridgeType.ROOTLESS_WIRELESS_DEBUGGING) ElectricBlue else SlateBorder, RoundedCornerShape(14.dp)),
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = SlateNavy)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Method 2: Rootless Wireless Debugging (ADB)", fontWeight = FontWeight.Bold, color = Color.White, style = MaterialTheme.typography.titleSmall)
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "Direct localhost ADB connection over TCP port. Requires pairing in Developer Options after reboot.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF94A3B8)
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    StepItem(number = "1", title = "Developer Options", desc = "Enable Developer Options and turn on 'Wireless Debugging'.")
-                    StepItem(number = "2", title = "Pair Device", desc = "Select 'Pair device with pairing code' and connect to localhost port.")
-                    StepItem(number = "3", title = "Verify Port", desc = "Ensure ADB daemon is running in background.")
-
-                    Spacer(modifier = Modifier.height(10.dp))
-                    OutlinedButton(
-                        onClick = { viewModel.setBridge(BridgeType.ROOTLESS_WIRELESS_DEBUGGING) },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Select Wireless Debugging ADB")
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(40.dp))
+            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }
