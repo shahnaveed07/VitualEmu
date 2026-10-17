@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Gamepad
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Warning
@@ -32,6 +33,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -204,6 +207,9 @@ fun GamesScreen(
                                 viewModel.selectGame(game)
                                 onGameSelected()
                             },
+                            onLaunchGame = {
+                                viewModel.launchGame(game.packageName)
+                            },
                             onDelete = {
                                 gameToRemove = game
                             }
@@ -233,8 +239,8 @@ fun GamesScreen(
         InstalledAppPickerDialog(
             viewModel = viewModel,
             onDismiss = { showAppPicker = false },
-            onAppSelected = { app ->
-                viewModel.addInstalledGame(app)
+            onAppsApplied = { apps ->
+                viewModel.addMultipleInstalledGames(apps)
                 showAppPicker = false
                 onGameSelected()
             }
@@ -277,7 +283,7 @@ fun GamesScreen(
 fun InstalledAppPickerDialog(
     viewModel: VitualEmuViewModel,
     onDismiss: () -> Unit,
-    onAppSelected: (InstalledApp) -> Unit
+    onAppsApplied: (List<InstalledApp>) -> Unit
 ) {
     val installedApps by viewModel.installedApps.collectAsState()
     val isDiscovering by viewModel.isDiscoveringApps.collectAsState()
@@ -285,6 +291,8 @@ fun InstalledAppPickerDialog(
     var showManualInput by remember { mutableStateOf(false) }
     var manualPkg by remember { mutableStateOf("") }
     var manualName by remember { mutableStateOf("") }
+
+    var selectedApps by remember { mutableStateOf(setOf<InstalledApp>()) }
 
     LaunchedEffect(Unit) {
         viewModel.discoverInstalledApps()
@@ -306,7 +314,7 @@ fun InstalledAppPickerDialog(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Select Installed Application", color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                Text("Select Installed Application(s)", color = Color.White, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                 IconButton(onClick = { viewModel.discoverInstalledApps() }) {
                     Icon(imageVector = Icons.Default.Refresh, contentDescription = "Refresh Apps", tint = ElectricBlue)
                 }
@@ -376,9 +384,13 @@ fun InstalledAppPickerDialog(
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             items(filteredApps, key = { it.packageName }) { app ->
+                                val isChecked = app in selectedApps
                                 InstalledAppRow(
                                     app = app,
-                                    onSelect = { onAppSelected(app) }
+                                    isChecked = isChecked,
+                                    onToggleSelect = {
+                                        selectedApps = if (isChecked) selectedApps - app else selectedApps + app
+                                    }
                                 )
                             }
                         }
@@ -400,11 +412,24 @@ fun InstalledAppPickerDialog(
                     Text("Add Package")
                 }
             } else {
-                OutlinedButton(
-                    onClick = { showManualInput = true },
-                    border = androidx.compose.foundation.BorderStroke(1.dp, SlateBorder)
-                ) {
-                    Text("Manual Entry", fontSize = 12.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = { showManualInput = true },
+                        border = androidx.compose.foundation.BorderStroke(1.dp, SlateBorder)
+                    ) {
+                        Text("Manual Entry", fontSize = 12.sp)
+                    }
+                    Button(
+                        onClick = {
+                            if (selectedApps.isNotEmpty()) {
+                                onAppsApplied(selectedApps.toList())
+                            }
+                        },
+                        enabled = selectedApps.isNotEmpty(),
+                        colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue, contentColor = MidnightBlue)
+                    ) {
+                        Text("Apply (${selectedApps.size})", fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         },
@@ -420,14 +445,19 @@ fun InstalledAppPickerDialog(
 @Composable
 fun InstalledAppRow(
     app: InstalledApp,
-    onSelect: () -> Unit
+    isChecked: Boolean,
+    onToggleSelect: () -> Unit
 ) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF0F172A), RoundedCornerShape(10.dp))
-            .border(1.dp, SlateBorder, RoundedCornerShape(10.dp))
-            .clickable(enabled = !app.isAlreadyAdded, onClick = onSelect)
+            .background(if (isChecked) Color(0xFF1E293B) else Color(0xFF0F172A), RoundedCornerShape(10.dp))
+            .border(
+                1.dp,
+                if (isChecked) ElectricBlue else SlateBorder,
+                RoundedCornerShape(10.dp)
+            )
+            .clickable(enabled = !app.isAlreadyAdded, onClick = onToggleSelect)
             .padding(10.dp)
     ) {
         Row(
@@ -484,14 +514,11 @@ fun InstalledAppRow(
                     fontWeight = FontWeight.Bold
                 )
             } else {
-                Button(
-                    onClick = onSelect,
-                    colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue, contentColor = MidnightBlue),
-                    shape = RoundedCornerShape(6.dp),
-                    modifier = Modifier.height(32.dp)
-                ) {
-                    Text("Add", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                }
+                Checkbox(
+                    checked = isChecked,
+                    onCheckedChange = { onToggleSelect() },
+                    colors = CheckboxDefaults.colors(checkedColor = ElectricBlue, checkmarkColor = MidnightBlue)
+                )
             }
         }
     }
@@ -520,6 +547,7 @@ fun GameItemCard(
     isSelected: Boolean,
     isInstalled: Boolean,
     onSelect: () -> Unit,
+    onLaunchGame: () -> Unit,
     onDelete: () -> Unit
 ) {
     Card(
@@ -573,6 +601,20 @@ fun GameItemCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = Color(0xFF94A3B8)
                 )
+            }
+
+            if (isInstalled) {
+                Button(
+                    onClick = onLaunchGame,
+                    colors = ButtonDefaults.buttonColors(containerColor = StatusEmerald, contentColor = Color.White),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.height(36.dp).testTag("launch_game_button_${game.gameId}")
+                ) {
+                    Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Start Game", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+                Spacer(modifier = Modifier.width(6.dp))
             }
 
             IconButton(onClick = onDelete) {

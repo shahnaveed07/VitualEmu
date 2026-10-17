@@ -266,6 +266,20 @@ fun HomeScreen(
                                 color = Color(0xFF94A3B8)
                             )
                         }
+
+                        activeGame?.packageName?.let { pkg ->
+                            OutlinedButton(
+                                onClick = { viewModel.launchGame(pkg) },
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = ElectricBlue),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, SlateBorder),
+                                modifier = Modifier.testTag("home_launch_game_button")
+                            ) {
+                                Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Start Game", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(14.dp))

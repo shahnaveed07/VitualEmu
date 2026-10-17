@@ -70,6 +70,10 @@ fun ActivationWizardScreen(
     var pairingPortInput by remember { mutableStateOf("5555") }
     var pairingCodeInput by remember { mutableStateOf("") }
 
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        viewModel.refreshBridgeHealth()
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()

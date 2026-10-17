@@ -2,6 +2,7 @@ package com.dsc.virtualemu.ui
 
 import android.app.Application
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import androidx.lifecycle.AndroidViewModel
@@ -177,6 +178,23 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
         return appDiscoveryUseCase.isPackageInstalled(packageName)
     }
 
+    fun launchGame(packageName: String) {
+        if (packageName.isBlank()) return
+        val context = getApplication<Application>()
+        try {
+            val intent = context.packageManager.getLaunchIntentForPackage(packageName)
+            if (intent != null) {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(intent)
+                showFeedback("Launching ${packageName.substringAfterLast('.')}...")
+            } else {
+                showFeedback("Unable to launch app: Launch intent not found for $packageName")
+            }
+        } catch (e: Exception) {
+            showFeedback("Failed to launch $packageName: ${e.localizedMessage}")
+        }
+    }
+
     fun addInstalledGame(app: InstalledApp) {
         if (app.packageName.isBlank()) return
         viewModelScope.launch {
@@ -194,6 +212,37 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
             repository.insertGame(game)
             selectGame(game)
             showFeedback("Added game: ${game.displayName}")
+        }
+    }
+
+    fun addMultipleInstalledGames(apps: List<InstalledApp>) {
+        if (apps.isEmpty()) return
+        viewModelScope.launch {
+            var addedCount = 0
+            for (app in apps) {
+                if (app.packageName.isNotBlank()) {
+                    val existing = repository.getGameByPackage(app.packageName)
+                    if (existing == null) {
+                        val game = Game(
+                            packageName = app.packageName,
+                            displayName = app.displayName,
+                            isTargeted = true
+                        )
+                        repository.insertGame(game)
+                        addedCount++
+                    }
+                }
+            }
+            if (addedCount > 0) {
+                showFeedback("Added $addedCount game(s) to library")
+                val lastAdded = apps.lastOrNull()
+                if (lastAdded != null) {
+                    val game = repository.getGameByPackage(lastAdded.packageName)
+                    if (game != null) selectGame(game)
+                }
+            } else {
+                showFeedback("Selected games were already in library")
+            }
         }
     }
 
