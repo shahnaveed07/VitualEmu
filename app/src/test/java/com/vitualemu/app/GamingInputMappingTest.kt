@@ -1,5 +1,6 @@
 package com.vitualemu.app
 
+import android.view.MotionEvent
 import com.vitualemu.app.domain.model.BridgeHealthState
 import com.vitualemu.app.domain.model.BridgeStatus
 import com.vitualemu.app.domain.model.BridgeType
@@ -12,18 +13,28 @@ import com.vitualemu.app.domain.model.Mapping
 import com.vitualemu.app.domain.model.MappingType
 import com.vitualemu.app.domain.model.MouseLookConfig
 import com.vitualemu.app.domain.model.Profile
+import com.vitualemu.app.domain.model.TouchAction
 import com.vitualemu.app.domain.policy.SafetyPolicy
 import com.vitualemu.app.domain.usecase.HeldInputRegistry
 import com.vitualemu.app.domain.usecase.PreflightCheckUseCase
 import com.vitualemu.app.domain.validation.ValidationRules
+import com.vitualemu.app.platform.activation.rootless.LocalAdbShellTransport
+import com.vitualemu.app.runtime.input.CombinedTouchFrame
+import com.vitualemu.app.runtime.input.InputBridge
 import com.vitualemu.app.runtime.input.MultiTouchDispatcher
+import com.vitualemu.app.runtime.input.MultiTouchPointerCombiner
+import com.vitualemu.app.runtime.input.WasdJoystickSynthesizer
 import com.vitualemu.app.runtime.mouselook.MouseLookEngine
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 class GamingInputMappingTest {
 
@@ -48,6 +59,103 @@ class GamingInputMappingTest {
 
         val emptyRelease = HeldInputRegistry.releaseAll()
         assertEquals(0, emptyRelease.size)
+    }
+
+    @Test
+    fun testMultiTouchPointerCombiner_combinesConcurrentPointersAndGeneratesEvdevTypeBFrames() {
+        val combiner = MultiTouchPointerCombiner(screenWidthPx = 2400, screenHeightPx = 1080)
+
+        // 1. First pointer down (WASD Slot 0) -> ACTION_DOWN, pointerCount = 1
+        val frame0 = combiner.onPointerTransition(0, TouchAction.DOWN, 0.20f, 0.70f)
+        assertNotNull(frame0)
+        assertEquals(TouchAction.DOWN, frame0!!.resolvedTouchAction)
+        assertEquals(MotionEvent.ACTION_DOWN, frame0.androidMaskedAction)
+        assertEquals(1, frame0.pointerCount)
+        assertTrue(frame0.evdevTypeBCommands.any { it.contains("47 0") }) // ABS_MT_SLOT 0
+        assertTrue(frame0.evdevTypeBCommands.any { it.contains("330 1") }) // BTN_TOUCH 1
+
+        // 2. Second concurrent pointer down (Mouse Look Slot 1) -> ACTION_POINTER_DOWN (index 1), pointerCount = 2
+        val frame1 = combiner.onPointerTransition(1, TouchAction.DOWN, 0.72f, 0.48f)
+        assertNotNull(frame1)
+        assertEquals(TouchAction.POINTER_DOWN, frame1!!.resolvedTouchAction)
+        val expectedAction1 = MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT)
+        assertEquals(expectedAction1, frame1.androidMaskedAction)
+        assertEquals(2, frame1.pointerCount)
+
+        // 3. Third concurrent pointer down (Fire Slot 2) -> ACTION_POINTER_DOWN (index 2), pointerCount = 3
+        val frame2 = combiner.onPointerTransition(2, TouchAction.DOWN, 0.85f, 0.65f)
+        assertNotNull(frame2)
+        assertEquals(TouchAction.POINTER_DOWN, frame2!!.resolvedTouchAction)
+        val expectedAction2 = MotionEvent.ACTION_POINTER_DOWN or (2 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT)
+        assertEquals(expectedAction2, frame2.androidMaskedAction)
+        assertEquals(3, frame2.pointerCount)
+
+        // 4. Release Fire Slot 2 while Slot 0 and Slot 1 remain held -> ACTION_POINTER_UP
+        val frameUp2 = combiner.onPointerTransition(2, TouchAction.UP, 0.85f, 0.65f)
+        assertNotNull(frameUp2)
+        assertEquals(TouchAction.POINTER_UP, frameUp2!!.resolvedTouchAction)
+        val expectedUp2 = MotionEvent.ACTION_POINTER_UP or (2 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT)
+        assertEquals(expectedUp2, frameUp2.androidMaskedAction)
+        // Frame includes the lifted pointer at index 2 during the UP transition, then removes it
+        assertEquals(3, frameUp2.pointerCount)
+        assertEquals(2, combiner.getActivePointerCount())
+        assertTrue(frameUp2.evdevTypeBCommands.any { it.contains("57 -1") }) // ABS_MT_TRACKING_ID -1
+
+        // 5. Emergency cancelAll -> ACTION_CANCEL and 0 remaining pointers
+        val cancelFrame = combiner.cancelAll()
+        assertNotNull(cancelFrame)
+        assertEquals(TouchAction.CANCEL, cancelFrame!!.resolvedTouchAction)
+        assertEquals(MotionEvent.ACTION_CANCEL, cancelFrame.androidMaskedAction)
+        assertEquals(0, combiner.getActivePointerCount())
+    }
+
+    @Test
+    fun testWasdJoystickSynthesizer_8WayDiagonalVectorNormalization() {
+        val synth = WasdJoystickSynthesizer()
+        assertFalse(synth.isActive())
+
+        // Press W + D simultaneously -> diagonal Up-Right normalized by 1/sqrt(2) (~0.7071)
+        val diag = synth.evaluate(
+            up = true,
+            down = false,
+            left = false,
+            right = true,
+            centerNormX = 0.20f,
+            centerNormY = 0.70f,
+            radius = 0.10f
+        )
+        assertTrue(diag.isActive)
+        assertTrue(diag.isInitialTouchDown)
+        assertEquals(0.7071f, diag.unitVectorX, 0.002f)
+        assertEquals(-0.7071f, diag.unitVectorY, 0.002f)
+
+        // Transition to W only while still holding stick -> isInitialTouchDown must be false
+        val cardinalUp = synth.evaluate(
+            up = true,
+            down = false,
+            left = false,
+            right = false,
+            centerNormX = 0.20f,
+            centerNormY = 0.70f,
+            radius = 0.10f
+        )
+        assertTrue(cardinalUp.isActive)
+        assertFalse(cardinalUp.isInitialTouchDown)
+        assertEquals(0.0f, cardinalUp.unitVectorX, 0.001f)
+        assertEquals(-1.0f, cardinalUp.unitVectorY, 0.001f)
+
+        // Release all keys -> inactive
+        val released = synth.evaluate(
+            up = false,
+            down = false,
+            left = false,
+            right = false,
+            centerNormX = 0.20f,
+            centerNormY = 0.70f,
+            radius = 0.10f
+        )
+        assertFalse(released.isActive)
+        assertFalse(synth.isActive())
     }
 
     @Test
@@ -89,8 +197,25 @@ class GamingInputMappingTest {
     }
 
     @Test
-    fun testMouseLookEngine_shootingMode360AutoEdgeResetAndFreeLook() = runBlocking {
-        val dispatcher = MultiTouchDispatcher()
+    fun testMouseLookEngine_shootingMode360AutoEdgeResetEmitsUpBeforeReanchor() = runBlocking {
+        val recordedFrames = mutableListOf<CombinedTouchFrame>()
+        val recordingBridge = object : InputBridge {
+            override val statusFlow: StateFlow<BridgeStatus> = MutableStateFlow(BridgeStatus())
+            override fun getStatus(): BridgeStatus = statusFlow.value
+            override fun getCapabilities() = statusFlow.value.capabilities
+            override suspend fun startSession(sessionId: String) = true
+            override suspend fun injectTouch(pointerId: Int, action: TouchAction, normX: Float, normY: Float, pressure: Float) = true
+            override suspend fun injectCombinedTouchFrame(frame: CombinedTouchFrame): Boolean {
+                recordedFrames.add(frame)
+                return true
+            }
+            override suspend fun executeMacroStep(step: MacroStep, sessionId: String) = true
+            override suspend fun cancelAll(sessionId: String) {}
+            override suspend fun releaseHeldInputs(sessionId: String) {}
+            override suspend fun stopSession(sessionId: String) {}
+        }
+
+        val dispatcher = MultiTouchDispatcher(bridgeProvider = { recordingBridge })
         val engine = MouseLookEngine(dispatcher)
         engine.updateConfig(
             MouseLookConfig(
@@ -114,10 +239,20 @@ class GamingInputMappingTest {
         assertTrue(dispatcher.isSlotActive(SafetyPolicy.MOUSE_LOOK_POINTER_SLOT))
         assertEquals(0.70f, engine.state.value.cameraPointerX, 0.001f)
 
-        // Move mouse right past the 0.90 right edge threshold -> triggers 360° Auto Center Reset
+        recordedFrames.clear()
+
+        // Move mouse right past the 0.90 right edge threshold -> triggers atomic 360° Auto Center Reset
         engine.onMouseDelta(0.25f, 0.0f)
         assertEquals(1, engine.state.value.edgeResetCount)
         assertTrue(engine.state.value.cameraPointerX < 0.90f)
+
+        // Verify atomic edge-recenter sequence emitted MOVE(edge) -> UP(edge) -> DOWN(anchor) -> MOVE(carry)
+        val actions = recordedFrames.map { it.resolvedTouchAction }
+        assertTrue(actions.contains(TouchAction.UP))
+        assertTrue(actions.contains(TouchAction.DOWN))
+        val upIndex = actions.indexOf(TouchAction.UP)
+        val downIndex = actions.lastIndexOf(TouchAction.DOWN)
+        assertTrue("Edge recenter must emit UP before re-anchoring DOWN", upIndex in 0 until downIndex)
 
         // Hold Free-Look Eye -> shifts Pointer 1 to Eye coordinates (0.82, 0.25)
         engine.setFreeLookActive(true)
@@ -132,6 +267,29 @@ class GamingInputMappingTest {
 
         engine.resetAndRelease()
         assertFalse(dispatcher.isSlotActive(SafetyPolicy.MOUSE_LOOK_POINTER_SLOT))
+    }
+
+    @Test
+    fun testLocalAdbShellTransport_buildsValidLittleEndianAdbProtocolPackets() {
+        val transport = LocalAdbShellTransport()
+        val payload = "shell:\u0000".toByteArray(Charsets.UTF_8)
+        val packet = transport.buildAdbPacket(
+            command = LocalAdbShellTransport.CMD_OPEN,
+            arg0 = 101,
+            arg1 = 0,
+            payload = payload
+        )
+        assertEquals(24 + payload.size, packet.size)
+
+        val buf = ByteBuffer.wrap(packet).order(ByteOrder.LITTLE_ENDIAN)
+        assertEquals(LocalAdbShellTransport.CMD_OPEN, buf.int)
+        assertEquals(101, buf.int)
+        assertEquals(0, buf.int)
+        assertEquals(payload.size, buf.int)
+        val checksum = buf.int
+        assertTrue(checksum > 0)
+        val magic = buf.int
+        assertEquals(LocalAdbShellTransport.CMD_OPEN xor -0x1, magic)
     }
 
     @Test

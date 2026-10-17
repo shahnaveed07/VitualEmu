@@ -27,11 +27,14 @@ import com.vitualemu.app.runtime.bridge.InputBridgeAdapter
 import com.vitualemu.app.runtime.diagnostics.DiagnosticsSnapshot
 import com.vitualemu.app.runtime.diagnostics.RuntimeDiagnostics
 import com.vitualemu.app.runtime.input.ActivePointerSlot
+import com.vitualemu.app.runtime.input.CombinedTouchFrame
 import com.vitualemu.app.runtime.input.MultiTouchDispatcher
 import com.vitualemu.app.runtime.macro.MacroEngine
 import com.vitualemu.app.runtime.mapping.KeymapTranslationEngine
 import com.vitualemu.app.runtime.mouselook.MouseLookEngine
 import com.vitualemu.app.runtime.mouselook.MouseLookState
+import com.vitualemu.app.runtime.overlay.PlayModeOverlayRuntimeBridge
+import com.vitualemu.app.runtime.overlay.PlayModeOverlayService
 import com.vitualemu.app.runtime.session.SessionManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -51,7 +54,7 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
 
     private var activeBridge: InputBridgeAdapter = ShizukuBridgeAdapter()
 
-    val multiTouchDispatcher = MultiTouchDispatcher { activeBridge }
+    val multiTouchDispatcher = MultiTouchDispatcher(bridgeProvider = { activeBridge })
     val mouseLookEngine = MouseLookEngine(multiTouchDispatcher)
     val macroEngine = MacroEngine(multiTouchDispatcher, viewModelScope)
     val keymapEngine = KeymapTranslationEngine(multiTouchDispatcher, mouseLookEngine, macroEngine)
@@ -86,17 +89,50 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
 
     val mouseLookState: StateFlow<MouseLookState> = mouseLookEngine.state
     val activePointerSlots: StateFlow<List<ActivePointerSlot>> = multiTouchDispatcher.slotsFlow
+    val lastCombinedFrame: StateFlow<CombinedTouchFrame?> = multiTouchDispatcher.lastCombinedFrame
     val runningMacros: StateFlow<Set<String>> = macroEngine.runningMacroIds
     val diagnosticsSnapshot: StateFlow<DiagnosticsSnapshot> = diagnostics.snapshot
 
+    val isOverlayServiceRunning: StateFlow<Boolean> = PlayModeOverlayRuntimeBridge.isOverlayServiceRunning
+    val isInputGrabEnabled: StateFlow<Boolean> = PlayModeOverlayRuntimeBridge.isInputGrabEnabled
+
     val isProUnlocked: StateFlow<Boolean> = cloudService.entitlement
         .map { it.isProUnlocked }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
     private val _snackbarMessage = MutableStateFlow<String?>(null)
     val snackbarMessage: StateFlow<String?> = _snackbarMessage.asStateFlow()
 
     init {
+        val dm = application.resources.displayMetrics
+        val landscapeW = maxOf(dm.widthPixels, dm.heightPixels).coerceAtLeast(1280)
+        val landscapeH = minOf(dm.widthPixels, dm.heightPixels).coerceAtLeast(720)
+        mouseLookEngine.updateDisplaySize(landscapeW, landscapeH)
+
+        // Wire physical peripheral hot-plug disconnect directly into full multi-touch & bridge release
+        deviceManager.setOnPeripheralDisconnectedListener { reason ->
+            viewModelScope.launch {
+                keymapEngine.neutralizeAll("peripheral_unplug")
+            }
+            sessionManager.onFocusLost()
+            diagnostics.recordSafeStop(reason)
+            showFeedback(reason)
+        }
+
+        // Wire system overlay physical capture callbacks into KeymapTranslationEngine & MouseLookEngine
+        PlayModeOverlayRuntimeBridge.onPhysicalKeyCaptured = { keyCode, isDown ->
+            dispatchSandboxKeyEvent(keyCode, isDown)
+        }
+        PlayModeOverlayRuntimeBridge.onPhysicalMouseDeltaCaptured = { dx, dy ->
+            dispatchSandboxMouseDelta(dx, dy)
+        }
+        PlayModeOverlayRuntimeBridge.onToggleShootingModeRequested = {
+            toggleShootingMode()
+        }
+        PlayModeOverlayRuntimeBridge.onEmergencyStopRequested = { reason ->
+            emergencySafeStop(reason)
+        }
+
         viewModelScope.launch {
             games.collect { list ->
                 if (_activeGame.value == null && list.isNotEmpty()) {
@@ -295,6 +331,18 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
         refreshBridgeHealth()
     }
 
+    fun requestShizukuPermission() {
+        val shizuku = activeBridge as? ShizukuBridgeAdapter
+            ?: ShizukuBridgeAdapter().also { activeBridge = it }
+        val requested = shizuku.requestShizukuPermission()
+        if (requested) {
+            showFeedback("Requested Shizuku authorization prompt")
+        } else {
+            showFeedback("Shizuku binder not detected. Start Shizuku app first.")
+        }
+        refreshBridgeHealth()
+    }
+
     fun pairWirelessAdb(port: Int, pairingCode: String) {
         val adbAdapter = activeBridge as? RootlessWirelessAdbBridgeAdapter
             ?: RootlessWirelessAdbBridgeAdapter().also { activeBridge = it }
@@ -328,10 +376,12 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun startPlayMode(): Boolean {
+        val context = getApplication<Application>()
         if (sessionState.value == SessionState.ACTIVE) {
             sessionManager.pauseSession()
+            PlayModeOverlayService.stop(context)
             viewModelScope.launch {
-                keymapEngine.neutralizeAll()
+                keymapEngine.neutralizeAll("play_mode_paused")
             }
             showFeedback("Play Mode Paused. All held inputs neutralized.")
             return false
@@ -343,7 +393,8 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
         }
         val started = sessionManager.startSession(activeBridge)
         if (started) {
-            showFeedback("Play Mode Activated! Controls mapped.")
+            PlayModeOverlayService.start(context)
+            showFeedback("Play Mode Activated! Floating HUD & Multi-Touch Engine active.")
         }
         return started
     }
@@ -384,18 +435,20 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun emergencySafeStop() {
+    fun emergencySafeStop(reason: String = "User Emergency Safe-Stop") {
+        val context = getApplication<Application>()
+        PlayModeOverlayService.stop(context)
         viewModelScope.launch {
-            keymapEngine.neutralizeAll()
+            keymapEngine.neutralizeAll("emergency_safe_stop")
         }
         sessionManager.emergencySafeStop()
-        diagnostics.recordSafeStop("User Emergency Safe-Stop")
+        diagnostics.recordSafeStop(reason)
         showFeedback("EMERGENCY SAFE STOP: All 10 pointer slots & macros neutralized.")
     }
 
     fun onFocusLoss() {
         viewModelScope.launch {
-            keymapEngine.neutralizeAll()
+            keymapEngine.neutralizeAll("window_focus_loss")
         }
         sessionManager.onFocusLost()
         diagnostics.recordSafeStop("Window Focus Loss Auto-Neutralize")
@@ -432,17 +485,14 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun unlockProSimulated(key: String = "VITUALEMU-PRO") {
-        if (cloudService.verifyAndUnlockPro(key)) {
-            showFeedback("VitualEmu Pro features unlocked!")
-        } else {
-            showFeedback("Invalid activation license key")
-        }
+    fun unlockProSimulated(key: String = "LOCAL") {
+        cloudService.verifyAndUnlockPro(key)
+        showFeedback("All VitualEmu features are unlocked locally.")
     }
 
     fun simulateAccountDeletion() {
         viewModelScope.launch {
-            keymapEngine.neutralizeAll()
+            keymapEngine.neutralizeAll("account_deletion")
             cloudService.deleteCloudAccountAndEntitlements()
             showFeedback("Cloud account & entitlement records deleted. Local profiles preserved.")
         }

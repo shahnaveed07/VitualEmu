@@ -183,11 +183,20 @@ fun ActivationWizardScreen(
                         StepItem(number = "3", title = "Authorize VitualEmu", desc = "Open Shizuku app, tap 'Authorized applications', and grant VitualEmu access.")
 
                         Spacer(modifier = Modifier.height(10.dp))
-                        OutlinedButton(
-                            onClick = { viewModel.setBridge(BridgeType.SHIZUKU) },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Select Shizuku as Active Bridge")
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            OutlinedButton(
+                                onClick = { viewModel.setBridge(BridgeType.SHIZUKU) },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Select Shizuku")
+                            }
+                            Button(
+                                onClick = { viewModel.requestShizukuPermission() },
+                                colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue, contentColor = MidnightBlue),
+                                modifier = Modifier.weight(1f).testTag("request_shizuku_permission_button")
+                            ) {
+                                Text("Grant Permission", fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
