@@ -17,10 +17,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -83,24 +83,22 @@ fun AddGameScreen(
         }
     }
 
-    // Outer Background: Light Lavender
-    val outerLavender = Color(0xFFE9D5FF)
-    val panelIndigo = Color(0xFF281845)
-    val cardPeriwinkle = Color(0xFF4C3A7A)
-    val cardSelectedIndigo = Color(0xFF281845)
-    val darkButtonIndigo = Color(0xFF281845)
+    val lavenderBg = Color(0xFFC7CBD9)
+    val cardIndigo = Color(0xFF535BA3)
+    val cardSelectedIndigo = Color(0xFF6875C4)
+    val buttonIndigo = Color(0xFF5B61B9)
     val greyButtonBg = Color(0xFF64748B)
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(outerLavender)
+            .background(lavenderBg)
     ) {
         // A. Header
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 24.dp, end = 24.dp, top = 14.dp, bottom = 8.dp)
+                .padding(start = 24.dp, end = 24.dp, top = 14.dp, bottom = 6.dp)
         ) {
             Text(
                 text = "Add Game",
@@ -120,37 +118,37 @@ fun AddGameScreen(
             )
         }
 
-        // Search Bar (Optional / Helpful for quickly filtering installed apps)
+        // Optional Search Bar
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 4.dp)
+                .padding(horizontal = 24.dp, vertical = 2.dp)
         ) {
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                placeholder = { Text("Search installed applications...", color = Color(0xFF64748B), fontSize = 13.sp) },
+                placeholder = { Text("Search installed applications...", color = Color(0xFF64748B), fontSize = 12.sp) },
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Default.Search,
                         contentDescription = null,
                         tint = Color(0xFF475569),
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(16.dp)
                     )
                 },
                 singleLine = true,
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = Color.White.copy(alpha = 0.7f),
-                    unfocusedContainerColor = Color.White.copy(alpha = 0.5f),
-                    focusedBorderColor = Color(0xFF4C3A7A),
+                    focusedContainerColor = Color.White.copy(alpha = 0.8f),
+                    unfocusedContainerColor = Color.White.copy(alpha = 0.6f),
+                    focusedBorderColor = cardIndigo,
                     unfocusedBorderColor = Color(0xFFCBD5E1),
                     focusedTextColor = Color(0xFF1E1B4B),
                     unfocusedTextColor = Color(0xFF1E1B4B)
                 ),
-                shape = RoundedCornerShape(10.dp),
+                shape = RoundedCornerShape(8.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp)
+                    .height(44.dp)
                     .testTag("add_game_search_input")
             )
         }
@@ -168,13 +166,13 @@ fun AddGameScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator(color = panelIndigo)
+                        CircularProgressIndicator(color = buttonIndigo)
                         Spacer(modifier = Modifier.height(10.dp))
                         Text(
                             text = "Scanning installed applications...",
                             color = Color(0xFF334155),
                             fontWeight = FontWeight.SemiBold,
-                            fontSize = 14.sp
+                            fontSize = 13.sp
                         )
                     }
                 }
@@ -187,27 +185,26 @@ fun AddGameScreen(
                         text = if (searchQuery.isNotBlank()) "No applications matching '$searchQuery'" else "No launchable applications found on device",
                         color = Color(0xFF334155),
                         fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp
+                        fontSize = 13.sp
                     )
                 }
             } else {
                 LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = 130.dp),
-                    contentPadding = PaddingValues(4.dp),
+                    columns = GridCells.Fixed(5),
+                    contentPadding = PaddingValues(2.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
                     items(filteredApps, key = { it.packageName }) { app ->
                         val isSelected = app in selectedApps
-                        AppGridCardItem(
+                        ReferenceAppGridCardItem(
                             app = app,
                             isSelected = isSelected,
                             onToggle = {
                                 selectedApps = if (isSelected) selectedApps - app else selectedApps + app
                             },
-                            unselectedColor = cardPeriwinkle,
-                            selectedColor = cardSelectedIndigo
+                            cardColor = if (isSelected) cardSelectedIndigo else cardIndigo
                         )
                     }
                 }
@@ -218,8 +215,8 @@ fun AddGameScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+                .padding(horizontal = 24.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Button(
@@ -228,12 +225,16 @@ fun AddGameScreen(
                     containerColor = greyButtonBg,
                     contentColor = Color.White
                 ),
-                shape = RoundedCornerShape(10.dp),
-                contentPadding = PaddingValues(horizontal = 28.dp, vertical = 10.dp),
-                modifier = Modifier.testTag("add_game_back_button")
+                shape = RoundedCornerShape(8.dp),
+                contentPadding = PaddingValues(horizontal = 32.dp, vertical = 8.dp),
+                modifier = Modifier
+                    .width(140.dp)
+                    .testTag("add_game_back_button")
             ) {
                 Text("Back", fontWeight = FontWeight.Bold, fontSize = 14.sp)
             }
+
+            Spacer(modifier = Modifier.width(20.dp))
 
             Button(
                 onClick = {
@@ -245,12 +246,14 @@ fun AddGameScreen(
                     }
                 },
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = darkButtonIndigo,
+                    containerColor = buttonIndigo,
                     contentColor = Color.White
                 ),
-                shape = RoundedCornerShape(10.dp),
-                contentPadding = PaddingValues(horizontal = 28.dp, vertical = 10.dp),
-                modifier = Modifier.testTag("add_game_apply_button")
+                shape = RoundedCornerShape(8.dp),
+                contentPadding = PaddingValues(horizontal = 32.dp, vertical = 8.dp),
+                modifier = Modifier
+                    .width(140.dp)
+                    .testTag("add_game_apply_button")
             ) {
                 Text(
                     text = if (selectedApps.isNotEmpty()) "Apply (${selectedApps.size})" else "Apply",
@@ -263,73 +266,97 @@ fun AddGameScreen(
 }
 
 @Composable
-private fun AppGridCardItem(
+private fun ReferenceAppGridCardItem(
     app: InstalledApp,
     isSelected: Boolean,
     onToggle: () -> Unit,
-    unselectedColor: Color,
-    selectedColor: Color
+    cardColor: Color
 ) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(120.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(if (isSelected) selectedColor else unselectedColor)
+            .height(145.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(cardColor)
             .border(
                 width = if (isSelected) 2.dp else 1.dp,
-                color = if (isSelected) Color(0xFF38BDF8) else Color(0xFF5B4BB7),
-                shape = RoundedCornerShape(14.dp)
+                color = if (isSelected) Color.White else Color.White.copy(alpha = 0.3f),
+                shape = RoundedCornerShape(10.dp)
             )
             .clickable(enabled = !app.isAlreadyAdded, onClick = onToggle)
-            .padding(10.dp)
+            .padding(8.dp)
             .testTag("app_card_${app.packageName}")
     ) {
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            AppIconGraphic(iconDrawable = app.icon, modifier = Modifier.size(44.dp))
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = app.displayName,
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = 12.sp,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center
-            )
-        }
-
-        // Selection Indicator / Added Indicator Badge
+        // Upper-Left Corner Badge
         if (app.isAlreadyAdded) {
             Box(
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .clip(RoundedCornerShape(6.dp))
+                    .align(Alignment.TopStart)
+                    .clip(RoundedCornerShape(4.dp))
                     .background(Color(0xFF1E293B))
-                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                    .padding(horizontal = 4.dp, vertical = 2.dp)
             ) {
-                Text("Added", color = Color(0xFF94A3B8), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Text("Added", color = Color(0xFF94A3B8), fontSize = 9.sp, fontWeight = FontWeight.Bold)
             }
         } else if (isSelected) {
             Box(
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .size(22.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFF38BDF8)),
+                    .align(Alignment.TopStart)
+                    .size(20.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color(0xFF10B981)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Default.Check,
                     contentDescription = "Selected",
-                    tint = Color(0xFF1E1B4B),
+                    tint = Color.White,
                     modifier = Modifier.size(14.dp)
+                )
+            }
+        } else {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .size(14.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(Color(0xFFFB923C))
+            )
+        }
+
+        // App Launcher Icon & Name
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Spacer(modifier = Modifier.height(4.dp))
+
+            AppIconDrawableImage(
+                iconDrawable = app.icon,
+                modifier = Modifier
+                    .size(68.dp)
+                    .clip(RoundedCornerShape(14.dp))
+            )
+
+            // Lower Semi-Transparent Title Box
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color(0xFF1E1438).copy(alpha = 0.5f))
+                    .border(1.dp, Color.White.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
+                    .padding(horizontal = 4.dp, vertical = 4.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = app.displayName,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center
                 )
             }
         }
@@ -337,11 +364,11 @@ private fun AppGridCardItem(
 }
 
 @Composable
-private fun AppIconGraphic(iconDrawable: Drawable?, modifier: Modifier = Modifier) {
+private fun AppIconDrawableImage(iconDrawable: Drawable?, modifier: Modifier = Modifier) {
     if (iconDrawable != null) {
         val bitmap = remember(iconDrawable) {
             try {
-                iconDrawable.toBitmap(64, 64).asImageBitmap()
+                iconDrawable.toBitmap(128, 128).asImageBitmap()
             } catch (_: Throwable) {
                 null
             }
@@ -358,14 +385,14 @@ private fun AppIconGraphic(iconDrawable: Drawable?, modifier: Modifier = Modifie
 
     Box(
         modifier = modifier
-            .background(Color(0xFF1E293B), RoundedCornerShape(10.dp)),
+            .background(Color(0xFF1E1438), RoundedCornerShape(10.dp)),
         contentAlignment = Alignment.Center
     ) {
         Icon(
             imageVector = Icons.Default.Gamepad,
             contentDescription = null,
-            tint = Color(0xFF38BDF8),
-            modifier = Modifier.size(24.dp)
+            tint = Color.White,
+            modifier = Modifier.size(28.dp)
         )
     }
 }

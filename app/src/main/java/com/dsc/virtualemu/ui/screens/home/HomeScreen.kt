@@ -1,6 +1,7 @@
 package com.dsc.virtualemu.ui.screens.home
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -16,43 +17,37 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Gamepad
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Mouse
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.SportsEsports
-import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -62,17 +57,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.graphics.drawable.toBitmap
 import com.dsc.virtualemu.domain.model.BridgeHealthState
 import com.dsc.virtualemu.domain.model.DeviceType
 import com.dsc.virtualemu.domain.model.Game
-import com.dsc.virtualemu.domain.model.SessionState
 import com.dsc.virtualemu.ui.VitualEmuViewModel
-import com.dsc.virtualemu.ui.components.StatusBadge
 import com.dsc.virtualemu.ui.theme.ElectricBlue
 import com.dsc.virtualemu.ui.theme.MidnightBlue
 import com.dsc.virtualemu.ui.theme.SlateBorder
-import com.dsc.virtualemu.ui.theme.SlateNavy
-import com.dsc.virtualemu.ui.theme.StatusAmber
 import com.dsc.virtualemu.ui.theme.StatusCrimson
 import com.dsc.virtualemu.ui.theme.StatusEmerald
 
@@ -87,23 +79,25 @@ fun HomeScreen(
 ) {
     val games by viewModel.games.collectAsState()
     val activeGame by viewModel.activeGame.collectAsState()
-    val activeProfile by viewModel.activeProfile.collectAsState()
     val bridgeStatus by viewModel.bridgeStatus.collectAsState()
     val connectedDevices by viewModel.connectedDevices.collectAsState()
-    val sessionState by viewModel.sessionState.collectAsState()
 
     val hasKeyboard = connectedDevices.any { it.type == DeviceType.KEYBOARD && it.isConnected }
     val hasMouse = connectedDevices.any { it.type == DeviceType.MOUSE && it.isConnected }
+
+    val purpleBg = Color(0xFFC7CBD9)
+    val cardIndigo = Color(0xFF6875C4)
+    val buttonIndigo = Color(0xFF5B61B9)
 
     // Outer Fixed-Height Container
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(MidnightBlue)
+            .background(purpleBg)
     ) {
-        // Faint background accents
+        // Background Subtle Gradient
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val gridColor = Color(0xFF1E293B).copy(alpha = 0.25f)
+            val gridColor = Color(0xFF535BA3).copy(alpha = 0.15f)
             val strokeWidth = 1f
             val step = 120f
             var x = -size.height
@@ -118,7 +112,7 @@ fun HomeScreen(
             }
         }
 
-        // Fixed vertical layout (No overall vertical scroll)
+        // Fixed Vertical Layout (No overall vertical scroll)
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -133,36 +127,15 @@ fun HomeScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Top-Left: Logo & Name
+                // Top-Left: Logo & Games Title
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .background(
-                                Brush.linearGradient(listOf(Color(0xFF0EA5E9), Color(0xFF0284C7))),
-                                RoundedCornerShape(10.dp)
-                            )
-                            .border(1.dp, ElectricBlue.copy(alpha = 0.5f), RoundedCornerShape(10.dp)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.SportsEsports,
-                            contentDescription = "VitualEmu Logo",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
                     Text(
                         text = buildAnnotatedString {
-                            withStyle(SpanStyle(color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)) {
-                                append("Virtual")
-                            }
-                            withStyle(SpanStyle(color = ElectricBlue, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)) {
-                                append("Emu")
+                            withStyle(SpanStyle(color = Color(0xFF1E1B4B), fontWeight = FontWeight.ExtraBold, fontSize = 22.sp)) {
+                                append("Games")
                             }
                         }
                     )
@@ -173,14 +146,9 @@ fun HomeScreen(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(20.dp))
-                        .background(if (isAuthorized) StatusEmerald.copy(alpha = 0.15f) else Color(0xFF450A0A))
-                        .border(
-                            1.dp,
-                            if (isAuthorized) StatusEmerald.copy(alpha = 0.5f) else StatusCrimson.copy(alpha = 0.6f),
-                            RoundedCornerShape(20.dp)
-                        )
+                        .background(if (isAuthorized) StatusEmerald.copy(alpha = 0.2f) else Color(0xFFDC2626).copy(alpha = 0.7f))
                         .clickable(enabled = !isAuthorized, onClick = onNavigateToActivation)
-                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                        .padding(horizontal = 16.dp, vertical = 7.dp)
                         .testTag("permission_banner")
                 ) {
                     Row(
@@ -190,34 +158,34 @@ fun HomeScreen(
                         Icon(
                             imageVector = if (isAuthorized) Icons.Default.CheckCircle else Icons.Default.Shield,
                             contentDescription = null,
-                            tint = if (isAuthorized) StatusEmerald else StatusCrimson,
+                            tint = Color.White,
                             modifier = Modifier.size(15.dp)
                         )
                         Text(
                             text = if (isAuthorized) "Bridge Active" else "Permission required",
-                            color = if (isAuthorized) StatusEmerald else Color(0xFFFCA5A5),
-                            fontSize = 11.sp,
+                            color = Color.White,
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
                         )
                         if (!isAuthorized) {
                             Icon(
                                 imageVector = Icons.Default.ChevronRight,
                                 contentDescription = null,
-                                tint = Color(0xFFFCA5A5),
+                                tint = Color.White,
                                 modifier = Modifier.size(15.dp)
                             )
                         }
                     }
                 }
 
-                // Top-Right: Mouse and Keyboard Status Cards
+                // Top-Right: Mouse and Keyboard Status Badges
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    // Mouse Card
+                    // Mouse Badge
                     Box(
                         modifier = Modifier
-                            .background(Color(0xFF0F172A), RoundedCornerShape(8.dp))
-                            .border(1.dp, SlateBorder, RoundedCornerShape(8.dp))
-                            .padding(horizontal = 8.dp, vertical = 5.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(if (hasMouse) Color(0xFF10B981) else Color(0xFF6366F1))
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -226,32 +194,24 @@ fun HomeScreen(
                             Icon(
                                 imageVector = Icons.Default.Mouse,
                                 contentDescription = null,
-                                tint = if (hasMouse) StatusEmerald else Color(0xFF94A3B8),
+                                tint = Color.White,
                                 modifier = Modifier.size(14.dp)
                             )
-                            Column {
-                                Text("Mouse", fontSize = 9.sp, color = Color(0xFF94A3B8), fontWeight = FontWeight.SemiBold)
-                                Text(
-                                    text = if (hasMouse) "Connected" else "Disconnected",
-                                    fontSize = 10.sp,
-                                    color = if (hasMouse) StatusEmerald else StatusCrimson,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .size(5.dp)
-                                    .background(if (hasMouse) StatusEmerald else StatusCrimson, CircleShape)
+                            Text(
+                                text = if (hasMouse) "Connected" else "Disconnected",
+                                fontSize = 11.sp,
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold
                             )
                         }
                     }
 
-                    // Keyboard Card
+                    // Keyboard Badge
                     Box(
                         modifier = Modifier
-                            .background(Color(0xFF0F172A), RoundedCornerShape(8.dp))
-                            .border(1.dp, SlateBorder, RoundedCornerShape(8.dp))
-                            .padding(horizontal = 8.dp, vertical = 5.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(if (hasKeyboard) Color(0xFF10B981) else Color(0xFF6366F1))
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -260,22 +220,14 @@ fun HomeScreen(
                             Icon(
                                 imageVector = Icons.Default.Keyboard,
                                 contentDescription = null,
-                                tint = if (hasKeyboard) StatusEmerald else Color(0xFF94A3B8),
+                                tint = Color.White,
                                 modifier = Modifier.size(14.dp)
                             )
-                            Column {
-                                Text("Keyboard", fontSize = 9.sp, color = Color(0xFF94A3B8), fontWeight = FontWeight.SemiBold)
-                                Text(
-                                    text = if (hasKeyboard) "Connected" else "Disconnected",
-                                    fontSize = 10.sp,
-                                    color = if (hasKeyboard) StatusEmerald else StatusCrimson,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .size(5.dp)
-                                    .background(if (hasKeyboard) StatusEmerald else StatusCrimson, CircleShape)
+                            Text(
+                                text = if (hasKeyboard) "Connected" else "Disconnected",
+                                fontSize = 11.sp,
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold
                             )
                         }
                     }
@@ -290,10 +242,10 @@ fun HomeScreen(
                 Button(
                     onClick = onNavigateToGames,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = ElectricBlue,
-                        contentColor = MidnightBlue
+                        containerColor = buttonIndigo,
+                        contentColor = Color.White
                     ),
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(8.dp),
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
                     modifier = Modifier.testTag("add_game_upper_button")
                 ) {
@@ -301,14 +253,14 @@ fun HomeScreen(
                         imageVector = Icons.Default.Add,
                         contentDescription = null,
                         modifier = Modifier.size(16.dp),
-                        tint = MidnightBlue
+                        tint = Color.White
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text("+ Add Game", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 }
             }
 
-            // 3. Main Content Area
+            // 3. Main Game Area
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -317,228 +269,91 @@ fun HomeScreen(
                 contentAlignment = Alignment.Center
             ) {
                 if (games.isEmpty()) {
-                    // Empty State
+                    // Empty State: Matches Reference Screenshot 1 exactly
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {
+                        // Large vertical card placeholder with + in center
                         Box(
                             modifier = Modifier
-                                .size(80.dp)
-                                .background(
-                                    Brush.radialGradient(
-                                        colors = listOf(ElectricBlue.copy(alpha = 0.25f), Color.Transparent)
-                                    ),
-                                    CircleShape
-                                ),
+                                .size(width = 190.dp, height = 240.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(cardIndigo)
+                                .border(1.5.dp, Color.White.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                                .clickable(onClick = onNavigateToGames)
+                                .testTag("empty_state_add_placeholder"),
                             contentAlignment = Alignment.Center
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(56.dp)
-                                    .background(Color(0xFF1E293B), CircleShape)
-                                    .border(1.5.dp, ElectricBlue.copy(alpha = 0.6f), CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Box {
-                                    Icon(
-                                        imageVector = Icons.Default.SportsEsports,
-                                        contentDescription = null,
-                                        tint = ElectricBlue,
-                                        modifier = Modifier.size(32.dp)
-                                    )
-                                    Box(
-                                        modifier = Modifier
-                                            .align(Alignment.BottomEnd)
-                                            .size(16.dp)
-                                            .background(ElectricBlue, CircleShape),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Add,
-                                            contentDescription = null,
-                                            tint = MidnightBlue,
-                                            modifier = Modifier.size(11.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        Text(
-                            text = "No games added yet",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color.White
-                        )
-
-                        Spacer(modifier = Modifier.height(4.dp))
-
-                        Text(
-                            text = "Add your games to start using VitualEmu with custom controls.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFF94A3B8),
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.widthIn(max = 420.dp)
-                        )
-
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        Button(
-                            onClick = onNavigateToGames,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = ElectricBlue,
-                                contentColor = MidnightBlue
-                            ),
-                            shape = RoundedCornerShape(10.dp),
-                            contentPadding = PaddingValues(horizontal = 22.dp, vertical = 8.dp),
-                            modifier = Modifier.testTag("add_game_empty_state_button")
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Add,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                                tint = MidnightBlue
+                                contentDescription = "Add Game",
+                                tint = Color.White,
+                                modifier = Modifier.size(72.dp)
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("+ Add Game", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Start Game Button directly beneath placeholder
+                        Button(
+                            onClick = onNavigateToGames,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = buttonIndigo,
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 10.dp),
+                            modifier = Modifier.testTag("add_game_empty_state_button")
+                        ) {
+                            Text("Start Game", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         }
                     }
                 } else {
-                    // Populated State: Horizontal Games Carousel + Control Panel
+                    // Games Added State: Matches Reference Screenshot 2 exactly
                     Column(
                         modifier = Modifier.fillMaxSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.SpaceBetween
                     ) {
-                        // A. Horizontal Games Carousel (LazyRow)
+                        // Horizontal Games Carousel
                         LazyRow(
-                            modifier = Modifier.fillMaxWidth(),
-                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             items(games, key = { it.gameId }) { game ->
                                 val isSelected = (activeGame?.gameId == game.gameId) || (activeGame == null && games.firstOrNull()?.gameId == game.gameId)
-                                HorizontalGameCard(
+                                ReferenceVerticalGameCard(
                                     game = game,
                                     isSelected = isSelected,
-                                    onSelect = { viewModel.selectGame(game) }
+                                    onSelect = { viewModel.selectGame(game) },
+                                    cardIndigo = cardIndigo
                                 )
                             }
                         }
 
-                        // B. Active Game Control Panel
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .border(1.dp, SlateBorder, RoundedCornerShape(14.dp)),
-                            shape = RoundedCornerShape(14.dp),
-                            colors = CardDefaults.cardColors(containerColor = SlateNavy)
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        // Start Game Button directly beneath carousel
+                        Button(
+                            onClick = {
+                                val targetPkg = activeGame?.packageName ?: games.firstOrNull()?.packageName ?: ""
+                                if (targetPkg.isNotBlank()) {
+                                    viewModel.launchGame(targetPkg)
+                                    viewModel.startPlayMode()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = buttonIndigo,
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 28.dp, vertical = 10.dp),
+                            modifier = Modifier.testTag("start_game_carousel_button")
                         ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = "SELECTED TARGET GAME",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = Color(0xFF94A3B8),
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 10.sp
-                                        )
-                                        Text(
-                                            text = activeGame?.displayName ?: games.firstOrNull()?.displayName ?: "",
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            fontSize = 18.sp,
-                                            color = Color.White,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-
-                                    StatusBadge(
-                                        text = if (sessionState == SessionState.ACTIVE) "PLAY MODE ACTIVE" else "STANDBY",
-                                        color = if (sessionState == SessionState.ACTIVE) StatusEmerald else Color(0xFF94A3B8)
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    // Profile Info Box
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .background(Color(0xFF0F172A), RoundedCornerShape(8.dp))
-                                            .padding(8.dp)
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Column {
-                                                Text("Mapped Profile", style = MaterialTheme.typography.labelSmall, color = Color(0xFF64748B), fontSize = 9.sp)
-                                                Text(activeProfile?.name ?: "Default Profile", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = ElectricBlue)
-                                            }
-                                            IconButton(onClick = onNavigateToEditor, modifier = Modifier.size(28.dp)) {
-                                                Icon(imageVector = Icons.Default.Tune, contentDescription = "Edit Canvas", tint = ElectricBlue, modifier = Modifier.size(16.dp))
-                                            }
-                                        }
-                                    }
-
-                                    // Launch App Button
-                                    (activeGame?.packageName ?: games.firstOrNull()?.packageName)?.let { pkg ->
-                                        OutlinedButton(
-                                            onClick = { viewModel.launchGame(pkg) },
-                                            shape = RoundedCornerShape(8.dp),
-                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = ElectricBlue),
-                                            border = androidx.compose.foundation.BorderStroke(1.dp, SlateBorder),
-                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                                            modifier = Modifier.testTag("home_launch_game_button")
-                                        ) {
-                                            Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(14.dp))
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Start Game", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                        }
-                                    }
-
-                                    // Play Mode Toggle Button
-                                    Button(
-                                        onClick = { viewModel.startPlayMode() },
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = if (sessionState == SessionState.ACTIVE) StatusAmber else StatusEmerald
-                                        ),
-                                        shape = RoundedCornerShape(8.dp),
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                        modifier = Modifier.testTag("start_play_mode_button")
-                                    ) {
-                                        Icon(
-                                            imageVector = if (sessionState == SessionState.ACTIVE) Icons.Default.Stop else Icons.Default.PlayArrow,
-                                            contentDescription = null,
-                                            tint = Color.White,
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = if (sessionState == SessionState.ACTIVE) "PAUSE" else "START PLAY MODE",
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 11.sp,
-                                            color = Color.White
-                                        )
-                                    }
-                                }
-                            }
+                            Text("Start Game", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                         }
                     }
                 }
@@ -548,80 +363,99 @@ fun HomeScreen(
 }
 
 @Composable
-private fun HorizontalGameCard(
+private fun ReferenceVerticalGameCard(
     game: Game,
     isSelected: Boolean,
-    onSelect: () -> Unit
+    onSelect: () -> Unit,
+    cardIndigo: Color
 ) {
-    Card(
+    val width = if (isSelected) 175.dp else 125.dp
+    val height = if (isSelected) 220.dp else 165.dp
+    val iconSize = if (isSelected) 90.dp else 60.dp
+
+    Box(
         modifier = Modifier
-            .width(if (isSelected) 200.dp else 150.dp)
-            .height(if (isSelected) 95.dp else 80.dp)
+            .size(width = width, height = height)
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (isSelected) cardIndigo else Color(0xFF535BA3))
+            .border(
+                width = if (isSelected) 2.dp else 1.dp,
+                color = if (isSelected) Color.White else Color.White.copy(alpha = 0.3f),
+                shape = RoundedCornerShape(12.dp)
+            )
             .clickable(onClick = onSelect)
+            .padding(8.dp)
             .testTag("game_card_${game.gameId}"),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isSelected) Color(0xFF1E293B) else SlateNavy
-        ),
-        border = androidx.compose.foundation.BorderStroke(
-            width = if (isSelected) 2.dp else 1.dp,
-            color = if (isSelected) ElectricBlue else SlateBorder
-        )
+        contentAlignment = Alignment.Center
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(10.dp),
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // App Launcher Icon
+            GameIconImage(
+                packageName = game.packageName,
+                modifier = Modifier
+                    .size(iconSize)
+                    .clip(RoundedCornerShape(16.dp))
+            )
+
+            // Semi-Transparent Game Title Label Box at Bottom
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFF1E1438).copy(alpha = 0.5f))
+                    .border(1.dp, Color.White.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 6.dp, vertical = 6.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(if (isSelected) 30.dp else 24.dp)
-                        .background(
-                            if (isSelected) ElectricBlue.copy(alpha = 0.2f) else Color(0xFF0F172A),
-                            RoundedCornerShape(6.dp)
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Gamepad,
-                        contentDescription = null,
-                        tint = if (isSelected) ElectricBlue else Color(0xFF94A3B8),
-                        modifier = Modifier.size(if (isSelected) 18.dp else 14.dp)
-                    )
-                }
-
-                if (isSelected) {
-                    StatusBadge("ACTIVE", color = StatusEmerald, showDot = true)
-                }
-            }
-
-            Column {
                 Text(
                     text = game.displayName,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Bold,
-                    fontSize = if (isSelected) 16.sp else 13.sp,
                     color = Color.White,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
+                    fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Bold,
+                    fontSize = if (isSelected) 17.sp else 12.sp,
+                    maxLines = if (isSelected) 2 else 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center
                 )
-                if (isSelected) {
-                    Text(
-                        text = game.packageName,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF94A3B8),
-                        fontSize = 10.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
             }
+        }
+    }
+}
+
+@Composable
+private fun GameIconImage(packageName: String, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val bitmap = remember(packageName) {
+        try {
+            val drawable = context.packageManager.getApplicationIcon(packageName)
+            drawable.toBitmap(128, 128).asImageBitmap()
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    if (bitmap != null) {
+        Image(
+            bitmap = bitmap,
+            contentDescription = null,
+            modifier = modifier
+        )
+    } else {
+        Box(
+            modifier = modifier.background(Color(0xFF1E1438), RoundedCornerShape(12.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Gamepad,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(32.dp)
+            )
         }
     }
 }
