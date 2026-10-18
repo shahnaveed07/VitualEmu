@@ -119,42 +119,9 @@ fun ActivationModeDialog(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // Option 1: Wired / PC Activation
+                    // Option 1: Shizuku Service
                     ActivationOptionRow(
-                        title = "1. Wired / PC Activation (Port 5555)",
-                        rowColor = rowPeriwinkle,
-                        onClick = {
-                            viewModel.setBridge(BridgeType.ROOTLESS_WIRELESS_DEBUGGING)
-                            viewModel.showFeedback("Wired / PC ADB Activation selected (Port 5555)")
-                            onOpenWizard()
-                        }
-                    )
-
-                    // Option 2: Wireless Debugging Activation
-                    ActivationOptionRow(
-                        title = "2. Wireless Debugging Activation (ADB)",
-                        rowColor = rowPeriwinkle,
-                        onClick = {
-                            viewModel.setBridge(BridgeType.ROOTLESS_WIRELESS_DEBUGGING)
-                            viewModel.showFeedback("Wireless ADB Activation selected")
-                            onOpenWizard()
-                        }
-                    )
-
-                    // Option 3: Root Activation
-                    ActivationOptionRow(
-                        title = "3. Root / SU Activation (via Shizuku / SU)",
-                        rowColor = rowPeriwinkle,
-                        onClick = {
-                            viewModel.setBridge(BridgeType.SHIZUKU)
-                            viewModel.showFeedback("Root / Shizuku Activation selected")
-                            onOpenWizard()
-                        }
-                    )
-
-                    // Option 4: Shizuku Manager
-                    ActivationOptionRow(
-                        title = "4. Shizuku Manager",
+                        title = "1. Shizuku Service (Recommended)",
                         rowColor = rowPeriwinkle,
                         onClick = {
                             viewModel.setBridge(BridgeType.SHIZUKU)
@@ -163,13 +130,24 @@ fun ActivationModeDialog(
                         }
                     )
 
-                    // Option 5: Shizuku (Legacy Mode)
+                    // Option 2: Wireless Debugging Activation
                     ActivationOptionRow(
-                        title = "5. Shizuku (Legacy Mode)",
+                        title = "2. Wireless Debugging (ADB Port)",
                         rowColor = rowPeriwinkle,
                         onClick = {
-                            viewModel.setBridge(BridgeType.SHIZUKU)
-                            viewModel.showFeedback("Shizuku Legacy Mode selected")
+                            viewModel.setBridge(BridgeType.ROOTLESS_WIRELESS_DEBUGGING)
+                            viewModel.showFeedback("Wireless ADB Activation selected")
+                            onOpenWizard()
+                        }
+                    )
+
+                    // Option 3: Wired PC ADB Mode
+                    ActivationOptionRow(
+                        title = "3. Wired PC ADB Mode (Port 5555)",
+                        rowColor = rowPeriwinkle,
+                        onClick = {
+                            viewModel.setBridge(BridgeType.ROOTLESS_WIRELESS_DEBUGGING)
+                            viewModel.showFeedback("Wired PC ADB Activation selected (Port 5555)")
                             onOpenWizard()
                         }
                     )

@@ -46,6 +46,14 @@ class VitualEmuRepository(context: Context) {
         prefs.edit().putString("selected_game_package", packageName).apply()
     }
 
+    fun isUiTestModeEnabled(): Boolean {
+        return prefs.getBoolean("ui_test_mode_enabled", false)
+    }
+
+    fun setUiTestModeEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("ui_test_mode_enabled", enabled).apply()
+    }
+
     fun getTargetedGames(): Flow<List<Game>> {
         return gameDao.getTargetedGames().map { list ->
             list.map { it.toDomain() }

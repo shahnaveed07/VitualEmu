@@ -111,11 +111,12 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
     private val _pendingStartGamePkg = MutableStateFlow<String?>(null)
     val pendingStartGamePkg: StateFlow<String?> = _pendingStartGamePkg.asStateFlow()
 
-    private val _isUiTestModeEnabled = MutableStateFlow(false)
+    private val _isUiTestModeEnabled = MutableStateFlow(repository.isUiTestModeEnabled())
     val isUiTestModeEnabled: StateFlow<Boolean> = _isUiTestModeEnabled.asStateFlow()
 
     fun setUiTestModeEnabled(enabled: Boolean) {
         _isUiTestModeEnabled.value = enabled
+        repository.setUiTestModeEnabled(enabled)
         PlayModeOverlayRuntimeBridge.isTestModePreview = enabled
         showFeedback(if (enabled) "UI Overlay Test Mode Enabled" else "UI Overlay Test Mode Disabled")
     }
