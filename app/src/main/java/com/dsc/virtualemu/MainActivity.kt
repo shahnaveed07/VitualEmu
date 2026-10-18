@@ -51,7 +51,6 @@ import com.dsc.virtualemu.ui.screens.activation.ActivationWizardScreen
 import com.dsc.virtualemu.ui.screens.permissions.PermissionsScreen
 import com.dsc.virtualemu.ui.screens.editor.MappingEditorScreen
 import com.dsc.virtualemu.ui.screens.games.AddGameScreen
-import com.dsc.virtualemu.ui.screens.games.GamesScreen
 import com.dsc.virtualemu.ui.screens.home.HomeScreen
 import com.dsc.virtualemu.ui.screens.playmode.PlayModeHudOverlay
 import com.dsc.virtualemu.ui.screens.profiles.AccountLoginScreen

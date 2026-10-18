@@ -461,8 +461,12 @@ class RootlessWirelessAdbBridgeAdapter(
         } else {
             HeldInputRegistry.recordKeyUp(keyCode)
         }
-        val ok = transport.writeShellCommands(listOf("input keyevent $keyCode"))
-        if (ok) dispatchedCommandCount++
+        val ok = if (isDown) {
+            transport.writeShellCommands(listOf("input keyevent $keyCode"))
+        } else {
+            true
+        }
+        if (ok && isDown) dispatchedCommandCount++
         ok
     }
 

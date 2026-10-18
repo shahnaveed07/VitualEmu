@@ -395,7 +395,10 @@ class ShizukuBridgeAdapter(
             }
         } catch (_: Throwable) {
         }
-        return dispatchEvdevViaShizukuShell(listOf("input keyevent $keyCode"))
+        if (isDown) {
+            return dispatchEvdevViaShizukuShell(listOf("input keyevent $keyCode"))
+        }
+        return true
     }
 
     private fun dispatchEvdevViaShizukuShell(commands: List<String>): Boolean {
@@ -429,8 +432,9 @@ class ShizukuBridgeAdapter(
                 }
             } catch (_: Throwable) {
                 closePersistentShell()
+                return false
             }
-            return true
+            return false
         }
     }
 

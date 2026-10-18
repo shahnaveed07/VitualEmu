@@ -87,8 +87,9 @@ class PlayModeOverlayService : Service() {
                 } else {
                     context.startService(intent)
                 }
-            } catch (_: Throwable) {
                 PlayModeOverlayRuntimeBridge.markServiceRunning(true)
+            } catch (_: Throwable) {
+                PlayModeOverlayRuntimeBridge.markServiceRunning(false)
             }
         }
 

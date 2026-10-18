@@ -208,10 +208,14 @@ fun AccountLoginScreen(
                 ) {
                     Button(
                         onClick = {
-                            if (emailInput.isNotBlank()) {
-                                viewModel.showFeedback("Registration initiated for $emailInput")
+                            val trimmedEmail = emailInput.trim()
+                            if (trimmedEmail.isBlank() || !trimmedEmail.contains("@") || !trimmedEmail.contains(".")) {
+                                viewModel.showFeedback("Please enter a valid email address (e.g. user@example.com)")
+                            } else if (passwordInput.length < 6) {
+                                viewModel.showFeedback("Password must be at least 6 characters long")
                             } else {
-                                viewModel.showFeedback("Please enter email to Sign Up")
+                                viewModel.showFeedback("Account registered locally for $trimmedEmail")
+                                onBack()
                             }
                         },
                         colors = ButtonDefaults.buttonColors(
@@ -226,11 +230,14 @@ fun AccountLoginScreen(
 
                     Button(
                         onClick = {
-                            if (emailInput.isNotBlank()) {
-                                viewModel.showFeedback("Signed in as $emailInput")
-                                onBack()
+                            val trimmedEmail = emailInput.trim()
+                            if (trimmedEmail.isBlank() || !trimmedEmail.contains("@") || !trimmedEmail.contains(".")) {
+                                viewModel.showFeedback("Please enter a valid email address")
+                            } else if (passwordInput.length < 6) {
+                                viewModel.showFeedback("Password must be at least 6 characters long")
                             } else {
-                                viewModel.showFeedback("Please enter email to Sign In")
+                                viewModel.showFeedback("Signed in locally as $trimmedEmail")
+                                onBack()
                             }
                         },
                         colors = ButtonDefaults.buttonColors(

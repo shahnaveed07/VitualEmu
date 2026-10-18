@@ -7,7 +7,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -42,12 +41,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.pointer.pointerInput
@@ -84,6 +86,8 @@ fun TestModeScreen(
 
     val eventLogs = remember { mutableStateListOf<String>() }
     val focusRequester = remember { FocusRequester() }
+    var sandboxWidthPx by remember { mutableFloatStateOf(1f) }
+    var sandboxHeightPx by remember { mutableFloatStateOf(1f) }
 
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
@@ -169,13 +173,17 @@ fun TestModeScreen(
                 .padding(10.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            BoxWithConstraints(
+            Box(
                 modifier = Modifier
                     .weight(1.6f)
                     .fillMaxHeight()
                     .aspectRatio(16f / 9f, matchHeightConstraintsFirst = true)
                     .background(Color(0xFF090D16), RoundedCornerShape(12.dp))
                     .border(1.dp, ElectricBlue.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                    .onGloballyPositioned { coords ->
+                        sandboxWidthPx = coords.size.width.toFloat().coerceAtLeast(1f)
+                        sandboxHeightPx = coords.size.height.toFloat().coerceAtLeast(1f)
+                    }
                     .focusRequester(focusRequester)
                     .onKeyEvent { keyEvent ->
                         val code = keyEvent.nativeKeyEvent.keyCode
@@ -197,6 +205,9 @@ fun TestModeScreen(
                         }
                     }
             ) {
+                val maxW = sandboxWidthPx
+                val maxH = sandboxHeightPx
+
                 Column(
                     modifier = Modifier.align(Alignment.Center),
                     horizontalAlignment = Alignment.CenterHorizontally
@@ -220,8 +231,8 @@ fun TestModeScreen(
                         modifier = Modifier
                             .offset {
                                 IntOffset(
-                                    x = (mouseLookState.cursorNormX * constraints.maxWidth).roundToInt() - 12,
-                                    y = (mouseLookState.cursorNormY * constraints.maxHeight).roundToInt() - 12
+                                    x = (mouseLookState.cursorNormX * maxW).roundToInt() - 12,
+                                    y = (mouseLookState.cursorNormY * maxH).roundToInt() - 12
                                 )
                             }
                             .size(24.dp)
@@ -241,8 +252,8 @@ fun TestModeScreen(
                         modifier = Modifier
                             .offset {
                                 IntOffset(
-                                    x = (slot.normX * constraints.maxWidth).roundToInt() - 20,
-                                    y = (slot.normY * constraints.maxHeight).roundToInt() - 20
+                                    x = (slot.normX * maxW).roundToInt() - 20,
+                                    y = (slot.normY * maxH).roundToInt() - 20
                                 )
                             }
                             .size(40.dp)

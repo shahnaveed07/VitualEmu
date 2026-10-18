@@ -6,8 +6,8 @@ import kotlinx.coroutines.flow.asStateFlow
 
 data class EntitlementState(
     val isProUnlocked: Boolean = true,
-    val tierName: String = "Full Local Edition",
-    val licenseToken: String? = "LOCAL-UNRESTRICTED",
+    val tierName: String = "Local Unrestricted Edition",
+    val licenseToken: String? = "LOCAL-ON-DEVICE",
     val verifiedAt: Long? = System.currentTimeMillis()
 )
 
@@ -16,10 +16,11 @@ class EntitlementCloudService {
     val entitlement: StateFlow<EntitlementState> = _entitlement.asStateFlow()
 
     fun verifyAndUnlockPro(licenseKey: String = "LOCAL"): Boolean {
+        val cleanKey = licenseKey.trim()
         _entitlement.value = EntitlementState(
             isProUnlocked = true,
-            tierName = "Full Local Edition",
-            licenseToken = "LOCAL-UNRESTRICTED",
+            tierName = "Local Unrestricted Edition",
+            licenseToken = if (cleanKey.isNotBlank()) "LOCAL-$cleanKey" else "LOCAL-ON-DEVICE",
             verifiedAt = System.currentTimeMillis()
         )
         return true
@@ -28,7 +29,7 @@ class EntitlementCloudService {
     fun deleteCloudAccountAndEntitlements() {
         _entitlement.value = EntitlementState(
             isProUnlocked = true,
-            tierName = "Full Local Edition (Cloud Cleared)",
+            tierName = "Local Unrestricted Edition (Local Data Cleared)",
             licenseToken = null,
             verifiedAt = System.currentTimeMillis()
         )

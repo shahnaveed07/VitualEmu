@@ -1,5 +1,6 @@
 package com.dsc.virtualemu.ui.screens.editor
 
+import android.annotation.SuppressLint
 import android.view.KeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
@@ -7,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -19,23 +21,38 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CenterFocusWeak
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.GridOn
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Mouse
+import androidx.compose.material.icons.filled.OpenWith
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Swipe
+import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
@@ -98,6 +115,7 @@ import com.dsc.virtualemu.ui.theme.StatusEmerald
 import java.util.UUID
 import kotlin.math.roundToInt
 
+@SuppressLint("UnusedBoxWithConstraintsScope")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MappingEditorScreen(
@@ -841,75 +859,136 @@ fun MappingEditorScreen(
         )
     }
 
-    // Add Control Modal Dialog
+    // Reference GGMouse Pro "Add component" Modal Dialog (Screenshots 5 & 6)
     if (showAddControlDialog) {
-        var newName by remember { mutableStateOf("") }
-        var selectedType by remember { mutableStateOf(MappingType.TAP) }
+        AddComponentDialog(
+            onDismiss = { showAddControlDialog = false },
+            onSelectComponent = { type, label ->
+                val newM = Mapping(
+                    profileId = activeProfile?.profileId ?: UUID.randomUUID().toString(),
+                    name = label,
+                    type = type,
+                    normalizedX = 0.5f,
+                    normalizedY = 0.5f
+                )
+                viewModel.addMapping(newM)
+                selectedMappingId = newM.id
+                showAddControlDialog = false
+                viewModel.showFeedback("Added component: $label")
+            }
+        )
+    }
+}
 
-        AlertDialog(
-            onDismissRequest = { showAddControlDialog = false },
-            title = { Text("Add Virtual Control", fontWeight = FontWeight.Bold, color = Color.White) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = newName,
-                        onValueChange = { newName = it },
-                        label = { Text("Control Name (e.g. Fire, Gloo Wall, Eye)") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+@Composable
+fun AddComponentDialog(
+    onDismiss: () -> Unit,
+    onSelectComponent: (type: MappingType, name: String) -> Unit
+) {
+    val dimBg = Color.Black.copy(alpha = 0.72f)
+    val panelNavy = Color(0xFF0F172A)
+    val cardBg = Color(0xFF1E293B)
+    val electricBlue = Color(0xFF38BDF8)
 
-                    Text("Control Type:", style = MaterialTheme.typography.labelSmall, color = Color(0xFF94A3B8))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        listOf(
-                            MappingType.TAP,
-                            MappingType.HOLD,
-                            MappingType.FIRE_WEAPON,
-                            MappingType.FREE_LOOK_EYE
-                        ).forEach { type ->
-                            FilterChip(
-                                selected = selectedType == type,
-                                onClick = { selectedType = type },
-                                label = { Text(type.name.take(8), fontSize = 10.sp) },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = ElectricBlue,
-                                    selectedLabelColor = MidnightBlue
+    val components = listOf(
+        Triple("Touch", MappingType.TAP, Icons.Default.TouchApp),
+        Triple("Swipe", MappingType.SWIPE, Icons.Default.Swipe),
+        Triple("Mouse Scroll", MappingType.AIM_LOOK, Icons.Default.Mouse),
+        Triple("Macro", MappingType.MACRO_TRIGGER, Icons.Default.AccountTree),
+        Triple("Joystick", MappingType.WASD_STICK, Icons.Default.OpenWith),
+        Triple("FPS View", MappingType.AIM_LOOK, Icons.Default.GpsFixed),
+        Triple("Free Look", MappingType.FREE_LOOK_EYE, Icons.Default.Visibility),
+        Triple("Mouse Pick", MappingType.FIRE_WEAPON, Icons.Default.CenterFocusWeak),
+        Triple("Long press group", MappingType.HOLD, Icons.Default.Schedule),
+        Triple("Floating ball display", MappingType.TAP_REPEAT, Icons.Default.RadioButtonUnchecked)
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(dimBg)
+            .clickable(onClick = onDismiss),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .widthIn(max = 520.dp)
+                .fillMaxWidth(0.92f)
+                .clip(RoundedCornerShape(16.dp))
+                .background(panelNavy)
+                .border(2.dp, electricBlue, RoundedCornerShape(16.dp))
+                .clickable(enabled = false, onClick = {})
+                .padding(20.dp)
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = "Add component",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White,
+                    fontSize = 22.sp
+                )
+
+                Text(
+                    text = "Select a component to place on keymap",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFFCBD5E1),
+                    fontSize = 13.sp
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(4),
+                    contentPadding = PaddingValues(2.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 280.dp)
+                ) {
+                    items(components) { (label, type, icon) ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(90.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(cardBg)
+                                .border(1.dp, electricBlue.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+                                .clickable {
+                                    onSelectComponent(type, label)
+                                }
+                                .padding(8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = label,
+                                    tint = electricBlue,
+                                    modifier = Modifier.size(28.dp)
                                 )
-                            )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = label,
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
                     }
                 }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        if (newName.isNotBlank()) {
-                            val newM = Mapping(
-                                profileId = activeProfile?.profileId ?: UUID.randomUUID().toString(),
-                                name = newName.trim(),
-                                type = selectedType,
-                                normalizedX = 0.5f,
-                                normalizedY = 0.5f
-                            )
-                            viewModel.addMapping(newM)
-                            selectedMappingId = newM.id
-                            showAddControlDialog = false
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue)
-                ) {
-                    Text("Add", color = MidnightBlue, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                OutlinedButton(onClick = { showAddControlDialog = false }) {
-                    Text("Cancel", color = Color.White)
-                }
-            },
-            containerColor = SlateNavy
-        )
+            }
+        }
     }
 }
