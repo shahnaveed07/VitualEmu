@@ -30,10 +30,14 @@ import androidx.compose.material.icons.filled.Gamepad
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Mouse
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import com.dsc.virtualemu.ui.theme.StatusAmber
+import com.dsc.virtualemu.ui.theme.StatusEmerald
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -77,6 +81,7 @@ fun HomeScreen(
     viewModel: VitualEmuViewModel,
     onNavigateToEditor: () -> Unit,
     onNavigateToActivation: () -> Unit,
+    onNavigateToPermissions: () -> Unit = {},
     onNavigateToTestMode: () -> Unit,
     modifier: Modifier = Modifier,
     onNavigateToGames: () -> Unit = {}
@@ -91,6 +96,21 @@ fun HomeScreen(
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 viewModel.refreshBridgeHealth()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    val pendingStartGamePkg by viewModel.pendingStartGamePkg.collectAsState()
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshBridgeHealth()
+                viewModel.resumePendingStartGameLaunchIfNeeded()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -168,11 +188,12 @@ fun HomeScreen(
 
                 if (!isFullyAuthorized) {
                     val bannerText = if (!hasBridge) "Activation Required" else "Overlay Permission Required"
+                    val onBannerClick = if (!hasBridge) onNavigateToActivation else onNavigateToPermissions
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(20.dp))
                             .background(Color(0xFFDC2626).copy(alpha = 0.85f))
-                            .clickable(onClick = onNavigateToActivation)
+                            .clickable(onClick = onBannerClick)
                             .padding(horizontal = 16.dp, vertical = 7.dp)
                             .testTag("permission_banner")
                     ) {
@@ -433,8 +454,10 @@ fun HomeScreen(
                             onClick = {
                                 val targetPkg = activeGame?.packageName ?: ""
                                 if (targetPkg.isNotBlank()) {
-                                    viewModel.launchGame(targetPkg)
-                                    viewModel.startPlayMode()
+                                    val started = viewModel.requestStartGameGated(targetPkg)
+                                    if (!started) {
+                                        viewModel.showFeedback("Activation requirement pending. Complete activation steps.")
+                                    }
                                 } else {
                                     viewModel.showFeedback("No game selected")
                                 }
@@ -453,6 +476,97 @@ fun HomeScreen(
                     }
                 }
             }
+        }
+
+        // Pending Activation Guided Checklist Dialog
+        if (pendingStartGamePkg != null) {
+            val hasBridge = bridgeStatus.state == BridgeHealthState.CONNECTED && bridgeStatus.isAuthorized
+            val hasOverlay = viewModel.checkOverlayPermission()
+
+            AlertDialog(
+                onDismissRequest = { viewModel.cancelPendingStartGameLaunch() },
+                title = {
+                    Text("Activation Prerequisites Required", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 16.sp)
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            "Complete the required activation steps below to launch ${activeGame?.displayName ?: "game"}:",
+                            color = Color(0xFFCBD5E1),
+                            fontSize = 12.sp
+                        )
+
+                        // Step 1: Input Bridge
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFF1E1438))
+                                .padding(10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("1. Input Bridge Activation", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 13.sp)
+                                Text(if (hasBridge) "Active & Authorized" else "Activation required", color = if (hasBridge) StatusEmerald else StatusAmber, fontSize = 11.sp)
+                            }
+                            if (!hasBridge) {
+                                Button(
+                                    onClick = onNavigateToActivation,
+                                    colors = ButtonDefaults.buttonColors(containerColor = buttonIndigo)
+                                ) {
+                                    Text("Activate", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+
+                        // Step 2: Overlay Permission
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFF1E1438))
+                                .padding(10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("2. System Overlay Window", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 13.sp)
+                                Text(if (hasOverlay) "Permission Granted" else "Permission required", color = if (hasOverlay) StatusEmerald else StatusAmber, fontSize = 11.sp)
+                            }
+                            if (!hasOverlay) {
+                                Button(
+                                    onClick = onNavigateToPermissions,
+                                    colors = ButtonDefaults.buttonColors(containerColor = buttonIndigo)
+                                ) {
+                                    Text("Grant", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val resumed = viewModel.resumePendingStartGameLaunchIfNeeded()
+                            if (!resumed) {
+                                onNavigateToActivation()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = StatusEmerald)
+                    ) {
+                        Text("Check & Resume", fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    OutlinedButton(
+                        onClick = { viewModel.cancelPendingStartGameLaunch() }
+                    ) {
+                        Text("Cancel", color = Color.White)
+                    }
+                },
+                containerColor = Color(0xFF281845)
+            )
         }
     }
 }

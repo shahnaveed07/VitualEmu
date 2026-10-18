@@ -329,4 +329,40 @@ class DatabaseMigrationAndViewModelTest {
         val checkOverlay = viewModel.checkOverlayPermission()
         assertNotNull(checkOverlay)
     }
+
+    @Test
+    fun testActivationGatedGameLaunch_storesPendingLaunchRequest() = runBlocking {
+        val viewModel = VitualEmuViewModel(application)
+        val pkg = "com.test.gatedlaunch"
+
+        // Request gated start game when bridge is not ready
+        val started = viewModel.requestStartGameGated(pkg)
+        assertFalse("Gated start game must return false when prerequisites are missing", started)
+        assertEquals("Pending launch package must store target package", pkg, viewModel.pendingStartGamePkg.value)
+
+        // Cancel pending launch
+        viewModel.cancelPendingStartGameLaunch()
+        assertNull("Cancel pending launch must clear pending launch package", viewModel.pendingStartGamePkg.value)
+    }
+
+    @Test
+    fun testShareCodeGenerationAndImport() = runBlocking {
+        val viewModel = VitualEmuViewModel(application)
+        val shareCode = viewModel.generateShareCode()
+        assertNotNull("Generated share code must not be null", shareCode)
+        assertTrue("Share code must not be empty", shareCode.isNotBlank())
+    }
+
+    @Test
+    fun testUiTestMode_allowsPreviewLaunchWithoutConnectedBridge() = runBlocking {
+        val viewModel = VitualEmuViewModel(application)
+
+        // Enable UI Test Mode
+        viewModel.setUiTestModeEnabled(true)
+        assertTrue("UI Test Mode state should be enabled", viewModel.isUiTestModeEnabled.value)
+
+        // Disable UI Test Mode
+        viewModel.setUiTestModeEnabled(false)
+        assertFalse("UI Test Mode state should be disabled", viewModel.isUiTestModeEnabled.value)
+    }
 }

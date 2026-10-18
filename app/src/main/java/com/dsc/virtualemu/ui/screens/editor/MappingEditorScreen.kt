@@ -132,6 +132,8 @@ fun MappingEditorScreen(
     var isSnapToGrid by remember { mutableStateOf(false) }
     var showKeyCaptureDialog by remember { mutableStateOf(false) }
     var showAddControlDialog by remember { mutableStateOf(false) }
+    var showShareCodeDialog by remember { mutableStateOf(false) }
+    var showImportCodePrompt by remember { mutableStateOf(false) }
     var inspectorTab by remember { mutableIntStateOf(0) }
 
     val mappings = activeProfile?.mappings ?: emptyList()
@@ -246,6 +248,93 @@ fun MappingEditorScreen(
                                 }
                             }
                     ) {
+                        // Top Center GG Mouse Pro Action Bar Overlay (Image 3)
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .padding(top = 8.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0xE63B82F6))
+                                .border(1.dp, Color(0xFF93C5FD), RoundedCornerShape(12.dp))
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Exit",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .clickable { onBack() }
+                                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                                            .testTag("editor_action_exit")
+                                    )
+                                    Text("|", color = Color.White.copy(alpha = 0.5f), fontSize = 12.sp)
+                                    Text(
+                                        text = "Add component",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .clickable { showAddControlDialog = true }
+                                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                                            .testTag("editor_action_add_component")
+                                    )
+                                    Text("|", color = Color.White.copy(alpha = 0.5f), fontSize = 12.sp)
+                                    Text(
+                                        text = "Save",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .clickable {
+                                                activeProfile?.let { viewModel.updateActiveProfile(it) }
+                                                viewModel.showFeedback("Keymap configuration saved")
+                                            }
+                                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                                            .testTag("editor_action_save")
+                                    )
+                                }
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Share",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .clickable { showShareCodeDialog = true }
+                                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                                            .testTag("editor_action_share")
+                                    )
+                                    Text("|", color = Color.White.copy(alpha = 0.5f), fontSize = 12.sp)
+                                    Text(
+                                        text = "Import",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .clickable { showImportCodePrompt = true }
+                                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                                            .testTag("editor_action_import")
+                                    )
+                                }
+                            }
+                        }
                         if (isSnapToGrid) {
                             Canvas(modifier = Modifier.fillMaxSize()) {
                                 val stepX = size.width / 10f
@@ -876,6 +965,99 @@ fun MappingEditorScreen(
                 showAddControlDialog = false
                 viewModel.showFeedback("Added component: $label")
             }
+        )
+    }
+
+    // Share Code Prompt Dialog (Image 6)
+    if (showShareCodeDialog) {
+        val context = androidx.compose.ui.platform.LocalContext.current
+        val code = remember { viewModel.generateShareCode() }
+        AlertDialog(
+            onDismissRequest = { showShareCodeDialog = false },
+            title = {
+                Text("Prompt", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 18.sp)
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "Here is the share code of your keymap. You can send the code to others and they can click the import button on the panel to import your keymap using the share code",
+                        color = Color(0xFFCBD5E1),
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp
+                    )
+                    OutlinedTextField(
+                        value = code,
+                        onValueChange = {},
+                        readOnly = true,
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+                        val clip = android.content.ClipData.newPlainText("Keymap Share Code", code)
+                        clipboard?.setPrimaryClip(clip)
+                        viewModel.showFeedback("Copied share code to clipboard!")
+                        showShareCodeDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue)
+                ) {
+                    Text("Copy to clipboard", color = MidnightBlue, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showShareCodeDialog = false }) {
+                    Text("Close", color = Color.White)
+                }
+            },
+            containerColor = SlateNavy
+        )
+    }
+
+    // Import Code Prompt Dialog (Image 5)
+    if (showImportCodePrompt) {
+        var importInput by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showImportCodePrompt = false },
+            title = {
+                Text("Prompt", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 18.sp)
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Please enter the share code", color = Color(0xFFCBD5E1), fontSize = 13.sp)
+                    OutlinedTextField(
+                        value = importInput,
+                        onValueChange = { importInput = it },
+                        singleLine = true,
+                        placeholder = { Text("Enter code...", color = Color(0xFF64748B)) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (importInput.isNotBlank()) {
+                            viewModel.importShareCode(importInput)
+                            showImportCodePrompt = false
+                        } else {
+                            viewModel.showFeedback("Please enter a valid share code")
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue)
+                ) {
+                    Text("Import", color = MidnightBlue, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showImportCodePrompt = false }) {
+                    Text("Cancel", color = Color.White)
+                }
+            },
+            containerColor = SlateNavy
         )
     }
 }

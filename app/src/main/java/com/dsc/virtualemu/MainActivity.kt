@@ -188,7 +188,8 @@ fun VitualEmuApp(viewModel: VitualEmuViewModel) {
                     HomeScreen(
                         viewModel = viewModel,
                         onNavigateToEditor = { currentRoute = NavDestinations.EDITOR },
-                        onNavigateToActivation = { currentRoute = NavDestinations.PERMISSIONS },
+                        onNavigateToActivation = { currentRoute = NavDestinations.ACTIVATION },
+                        onNavigateToPermissions = { currentRoute = NavDestinations.PERMISSIONS },
                         onNavigateToTestMode = { currentRoute = NavDestinations.TEST_MODE },
                         onNavigateToGames = {
                             currentRoute = NavDestinations.GAMES

@@ -71,6 +71,7 @@ fun SettingsScreen(
     val density = LocalDensity.current
 
     val bridgeStatus by viewModel.bridgeStatus.collectAsState()
+    val isUiTestModeEnabled by viewModel.isUiTestModeEnabled.collectAsState()
 
     var showResetDialog by remember { mutableStateOf(false) }
     var showActivationModeDialog by remember { mutableStateOf(false) }
@@ -207,6 +208,16 @@ fun SettingsScreen(
                     onCheckedChange = {
                         touchCompatMode = it
                         viewModel.showFeedback(if (it) "Touch compatibility mode enabled" else "Standard touch dispatch active")
+                    },
+                    rowColor = rowPeriwinkle
+                )
+
+                // Row 6.5: UI Overlay Test Mode
+                SettingsSwitchRow(
+                    title = "UI Overlay Test Mode (Preview)",
+                    checked = isUiTestModeEnabled,
+                    onCheckedChange = {
+                        viewModel.setUiTestModeEnabled(it)
                     },
                     rowColor = rowPeriwinkle
                 )

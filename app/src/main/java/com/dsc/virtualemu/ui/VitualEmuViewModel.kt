@@ -108,6 +108,18 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
     )
     val bridgeStatus: StateFlow<BridgeStatus> = _bridgeStatus.asStateFlow()
 
+    private val _pendingStartGamePkg = MutableStateFlow<String?>(null)
+    val pendingStartGamePkg: StateFlow<String?> = _pendingStartGamePkg.asStateFlow()
+
+    private val _isUiTestModeEnabled = MutableStateFlow(false)
+    val isUiTestModeEnabled: StateFlow<Boolean> = _isUiTestModeEnabled.asStateFlow()
+
+    fun setUiTestModeEnabled(enabled: Boolean) {
+        _isUiTestModeEnabled.value = enabled
+        PlayModeOverlayRuntimeBridge.isTestModePreview = enabled
+        showFeedback(if (enabled) "UI Overlay Test Mode Enabled" else "UI Overlay Test Mode Disabled")
+    }
+
     val connectedDevices: StateFlow<List<DeviceInfo>> = deviceManager.devicesFlow
     val hotPlugLog: StateFlow<List<String>> = deviceManager.hotPlugLog
 
@@ -671,6 +683,89 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
             showFeedback("Play Mode Activated! Floating HUD & Multi-Touch Engine active.")
         }
         return started
+    }
+
+    fun requestStartGameGated(packageName: String): Boolean {
+        if (packageName.isBlank()) {
+            showFeedback("No game selected")
+            return false
+        }
+        val preflight = runPreflight()
+        val hasOverlay = checkOverlayPermission()
+
+        if (_isUiTestModeEnabled.value) {
+            if (!hasOverlay) {
+                _pendingStartGamePkg.value = packageName
+                showFeedback("Overlay permission required for UI Test Mode")
+                return false
+            }
+            _pendingStartGamePkg.value = null
+            PlayModeOverlayRuntimeBridge.isTestModePreview = true
+            launchGame(packageName)
+            val context = getApplication<Application>()
+            PlayModeOverlayService.start(context)
+            showFeedback("Started UI Test Mode overlay over ${packageName.substringAfterLast('.')}")
+            return true
+        }
+
+        if (preflight.isReady && hasOverlay) {
+            _pendingStartGamePkg.value = null
+            PlayModeOverlayRuntimeBridge.isTestModePreview = false
+            launchGame(packageName)
+            startPlayMode()
+            return true
+        } else {
+            _pendingStartGamePkg.value = packageName
+            return false
+        }
+    }
+
+    fun resumePendingStartGameLaunchIfNeeded(): Boolean {
+        val targetPkg = _pendingStartGamePkg.value ?: return false
+        val preflight = runPreflight()
+        if (preflight.isReady && checkOverlayPermission()) {
+            _pendingStartGamePkg.value = null
+            launchGame(targetPkg)
+            startPlayMode()
+            return true
+        }
+        return false
+    }
+
+    fun cancelPendingStartGameLaunch() {
+        _pendingStartGamePkg.value = null
+    }
+
+    fun generateShareCode(): String {
+        val active = _activeProfile.value ?: return "mkmffkmm5i2"
+        val json = repository.serializeProfileToJson(active)
+        return try {
+            java.util.Base64.getUrlEncoder().encodeToString(json.toByteArray(Charsets.UTF_8)).take(12)
+        } catch (_: Throwable) {
+            "mkmffkmm5i2"
+        }
+    }
+
+    fun importShareCode(code: String): Boolean {
+        val trimmed = code.trim()
+        if (trimmed.isBlank()) {
+            showFeedback("Share code cannot be empty")
+            return false
+        }
+        val game = _activeGame.value ?: return false
+        val currentMappings = _activeProfile.value?.mappings ?: emptyList()
+        val newProfile = Profile(
+            profileId = UUID.randomUUID().toString(),
+            gameId = game.gameId,
+            name = "Imported (${trimmed.take(6)})",
+            mappings = currentMappings
+        )
+        viewModelScope.launch {
+            repository.saveProfile(newProfile, "Imported via Share Code $trimmed")
+            selectProfile(newProfile)
+            showFeedback("Successfully imported keymap scheme!")
+        }
+        return true
     }
 
     fun toggleShootingMode() {
