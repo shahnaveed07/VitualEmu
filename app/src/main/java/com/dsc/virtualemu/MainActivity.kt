@@ -54,6 +54,7 @@ import com.dsc.virtualemu.ui.screens.games.AddGameScreen
 import com.dsc.virtualemu.ui.screens.games.GamesScreen
 import com.dsc.virtualemu.ui.screens.home.HomeScreen
 import com.dsc.virtualemu.ui.screens.playmode.PlayModeHudOverlay
+import com.dsc.virtualemu.ui.screens.profiles.AccountLoginScreen
 import com.dsc.virtualemu.ui.screens.profiles.ProfilesScreen
 import com.dsc.virtualemu.ui.screens.settings.SettingsScreen
 import com.dsc.virtualemu.ui.screens.testmode.TestModeScreen
@@ -224,7 +225,11 @@ fun VitualEmuApp(viewModel: VitualEmuViewModel) {
                     }
                     SettingsScreen(
                         viewModel = viewModel,
+                        onNavigateToAccount = {
+                            currentRoute = NavDestinations.ACCOUNT_LOGIN
+                        },
                         onNavigateToActivation = { currentRoute = NavDestinations.ACTIVATION },
+                        onNavigateToPermissions = { currentRoute = NavDestinations.PERMISSIONS },
                         modifier = Modifier.padding(innerPadding)
                     )
                 }
@@ -248,6 +253,15 @@ fun VitualEmuApp(viewModel: VitualEmuViewModel) {
                 }
                 NavDestinations.PERMISSIONS -> {
                     PermissionsScreen(
+                        viewModel = viewModel,
+                        onBack = {
+                            currentRoute = NavDestinations.HOME
+                        },
+                        modifier = Modifier.padding(innerPadding)
+                    )
+                }
+                NavDestinations.ACCOUNT_LOGIN -> {
+                    AccountLoginScreen(
                         viewModel = viewModel,
                         onBack = {
                             currentRoute = NavDestinations.HOME

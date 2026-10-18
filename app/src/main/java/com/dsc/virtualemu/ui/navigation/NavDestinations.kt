@@ -24,5 +24,6 @@ object NavDestinations {
     const val EDITOR = "editor"
     const val ACTIVATION = "activation"
     const val PERMISSIONS = "permissions"
+    const val ACCOUNT_LOGIN = "account_login"
     const val TEST_MODE = "test_mode"
 }
