@@ -265,6 +265,8 @@ class DatabaseMigrationAndViewModelTest {
 
         assertEquals(1, viewModel1.games.value.size)
 
+        ShadowLooper.idleMainLooper()
+
         // Recreate ViewModel (simulating app restart)
         val viewModel2 = VitualEmuViewModel(application)
 

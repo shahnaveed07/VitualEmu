@@ -18,6 +18,7 @@ import com.dsc.virtualemu.domain.model.MouseLookConfig
 import com.dsc.virtualemu.domain.model.Profile
 import com.dsc.virtualemu.domain.model.ProfileSnapshot
 import com.dsc.virtualemu.domain.policy.SafetyPolicy
+import androidx.room.withTransaction
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -85,33 +86,31 @@ class VitualEmuRepository(context: Context) {
         selectedPackageNames: Set<String>,
         getDisplayName: (String) -> String
     ) = withContext(Dispatchers.IO) {
-        database.runInTransaction {
-            kotlinx.coroutines.runBlocking {
-                val existingEntities = gameDao.getAllGamesList()
-                val existingMap = existingEntities.associateBy { it.packageName }
+        database.withTransaction {
+            val existingEntities = gameDao.getAllGamesList()
+            val existingMap = existingEntities.associateBy { it.packageName }
 
-                // Update existing records
-                for (entity in existingEntities) {
-                    val shouldBeTargeted = selectedPackageNames.contains(entity.packageName)
-                    if (entity.isTargeted != shouldBeTargeted) {
-                        gameDao.updateGame(entity.copy(isTargeted = shouldBeTargeted))
-                    }
+            // Update existing records
+            for (entity in existingEntities) {
+                val shouldBeTargeted = selectedPackageNames.contains(entity.packageName)
+                if (entity.isTargeted != shouldBeTargeted) {
+                    gameDao.updateGame(entity.copy(isTargeted = shouldBeTargeted))
                 }
+            }
 
-                // Insert new selections that do not exist yet in Room
-                for (pkg in selectedPackageNames) {
-                    if (!existingMap.containsKey(pkg)) {
-                        val displayName = getDisplayName(pkg).ifBlank { pkg.substringAfterLast('.') }
-                        val newGame = GameEntity(
-                            gameId = UUID.randomUUID().toString(),
-                            packageName = pkg,
-                            displayName = displayName,
-                            iconUri = null,
-                            isTargeted = true,
-                            addedAt = System.currentTimeMillis()
-                        )
-                        gameDao.insertGame(newGame)
-                    }
+            // Insert new selections that do not exist yet in Room
+            for (pkg in selectedPackageNames) {
+                if (!existingMap.containsKey(pkg)) {
+                    val displayName = getDisplayName(pkg).ifBlank { pkg.substringAfterLast('.') }
+                    val newGame = GameEntity(
+                        gameId = UUID.randomUUID().toString(),
+                        packageName = pkg,
+                        displayName = displayName,
+                        iconUri = null,
+                        isTargeted = true,
+                        addedAt = System.currentTimeMillis()
+                    )
+                    gameDao.insertGame(newGame)
                 }
             }
         }

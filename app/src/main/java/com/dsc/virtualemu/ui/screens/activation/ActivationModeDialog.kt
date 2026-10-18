@@ -119,20 +119,20 @@ fun ActivationModeDialog(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // Option 1: Wired/Computer activation
+                    // Option 1: Wired / PC Activation
                     ActivationOptionRow(
-                        title = "1. Wired/Computer activation",
+                        title = "1. Wired / PC Activation (Port 5555)",
                         rowColor = rowPeriwinkle,
                         onClick = {
                             viewModel.setBridge(BridgeType.ROOTLESS_WIRELESS_DEBUGGING)
-                            viewModel.showFeedback("Wired/Computer Activation selected")
+                            viewModel.showFeedback("Wired / PC ADB Activation selected (Port 5555)")
                             onOpenWizard()
                         }
                     )
 
-                    // Option 2: Wireless activation
+                    // Option 2: Wireless Debugging Activation
                     ActivationOptionRow(
-                        title = "2. Wireless activation",
+                        title = "2. Wireless Debugging Activation (ADB)",
                         rowColor = rowPeriwinkle,
                         onClick = {
                             viewModel.setBridge(BridgeType.ROOTLESS_WIRELESS_DEBUGGING)
@@ -141,20 +141,20 @@ fun ActivationModeDialog(
                         }
                     )
 
-                    // Option 3: Root activation
+                    // Option 3: Root Activation
                     ActivationOptionRow(
-                        title = "3. Root activation",
+                        title = "3. Root / SU Activation (via Shizuku / SU)",
                         rowColor = rowPeriwinkle,
                         onClick = {
                             viewModel.setBridge(BridgeType.SHIZUKU)
-                            viewModel.showFeedback("Root Activation selected")
+                            viewModel.showFeedback("Root / Shizuku Activation selected")
                             onOpenWizard()
                         }
                     )
 
-                    // Option 4: Shizuku
+                    // Option 4: Shizuku Manager
                     ActivationOptionRow(
-                        title = "4. Shizuku",
+                        title = "4. Shizuku Manager",
                         rowColor = rowPeriwinkle,
                         onClick = {
                             viewModel.setBridge(BridgeType.SHIZUKU)

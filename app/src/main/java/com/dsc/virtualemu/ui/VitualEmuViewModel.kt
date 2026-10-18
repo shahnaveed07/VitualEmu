@@ -14,6 +14,7 @@ import com.dsc.virtualemu.domain.mapping.KeymapExportManager
 import com.dsc.virtualemu.domain.mapping.ParsedCfgData
 import com.dsc.virtualemu.domain.model.BridgeHealthState
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import com.dsc.virtualemu.domain.model.BridgeStatus
 import com.dsc.virtualemu.domain.model.BridgeType
@@ -211,10 +212,36 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
         if (_isSyncingSelection.value) return
         viewModelScope.launch {
             _isSyncingSelection.value = true
+            val existingTargetedPkgs = games.value.map { it.packageName }.toSet()
+            val newPkgs = selectedPackageNames - existingTargetedPkgs
+
             val appMap = _installedApps.value.associateBy { it.packageName }
             repository.syncGameSelections(selectedPackageNames) { pkg ->
                 appMap[pkg]?.displayName ?: pkg.substringAfterLast('.')
             }
+
+            val freshTargetedGames = repository.getTargetedGames().first()
+            val newlyAddedPkg = newPkgs.lastOrNull()
+            if (newlyAddedPkg != null) {
+                val newlyAddedGame = freshTargetedGames.find { it.packageName == newlyAddedPkg }
+                if (newlyAddedGame != null) {
+                    selectGame(newlyAddedGame)
+                }
+            } else if (freshTargetedGames.isNotEmpty()) {
+                val currentPkg = _activeGame.value?.packageName
+                val currentMatch = freshTargetedGames.find { it.packageName == currentPkg }
+                if (currentMatch != null) {
+                    selectGame(currentMatch)
+                } else {
+                    selectGame(freshTargetedGames.first())
+                }
+            } else {
+                _activeGame.value = null
+                _activeProfile.value = null
+                _profiles.value = emptyList()
+            }
+
+            discoverInstalledApps()
             _isSyncingSelection.value = false
             showFeedback("Selection saved (${selectedPackageNames.size} game(s) selected)")
             onComplete()
@@ -574,7 +601,14 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
     fun requestShizukuPermission() {
         val shizuku = activeBridge as? ShizukuBridgeAdapter
             ?: ShizukuBridgeAdapter().also { activeBridge = it }
-        val requested = shizuku.requestShizukuPermission()
+        val requested = shizuku.requestShizukuPermission { granted ->
+            viewModelScope.launch {
+                refreshBridgeHealth()
+                if (granted) {
+                    showFeedback("Shizuku permission granted! Bridge active.")
+                }
+            }
+        }
         if (requested) {
             showFeedback("Requested Shizuku authorization prompt")
         } else {

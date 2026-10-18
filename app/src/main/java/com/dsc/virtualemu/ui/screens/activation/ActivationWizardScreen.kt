@@ -217,7 +217,7 @@ fun ActivationWizardScreen(
                         Text("Method 2: Rootless Wireless Debugging (ADB)", fontWeight = FontWeight.Bold, color = Color.White, style = MaterialTheme.typography.titleSmall)
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "Direct localhost ADB socket daemon. Pairing code is processed in-memory only and never persisted to disk.",
+                            text = "Direct localhost ADB daemon socket. Enter the Wireless Debugging Port found in Developer Options > Wireless Debugging (e.g. 5555 or 37123).",
                             style = MaterialTheme.typography.bodySmall,
                             color = Color(0xFF94A3B8)
                         )

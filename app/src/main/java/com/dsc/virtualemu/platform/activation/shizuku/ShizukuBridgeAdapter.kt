@@ -84,12 +84,29 @@ class ShizukuBridgeAdapter(
     /**
      * Requests Shizuku runtime authorization if the Shizuku binder is alive but permission is not yet granted.
      */
-    fun requestShizukuPermission(requestCode: Int = DEFAULT_SHIZUKU_REQUEST_CODE): Boolean {
+    fun requestShizukuPermission(requestCode: Int = DEFAULT_SHIZUKU_REQUEST_CODE, onResult: ((granted: Boolean) -> Unit)? = null): Boolean {
         return try {
             val shizukuClass = Class.forName("rikka.shizuku.Shizuku")
             val pingMethod = shizukuClass.getDeclaredMethod("pingBinder")
             val isAlive = pingMethod.invoke(null) as? Boolean ?: false
             if (!isAlive) return false
+
+            try {
+                val listenerClass = Class.forName("rikka.shizuku.Shizuku\$OnRequestPermissionResultListener")
+                val addListenerMethod = shizukuClass.getDeclaredMethod("addRequestPermissionResultListener", listenerClass)
+                val proxy = java.lang.reflect.Proxy.newProxyInstance(
+                    listenerClass.classLoader,
+                    arrayOf(listenerClass)
+                ) { _, method, args ->
+                    if (method.name == "onRequestPermissionResult") {
+                        val granted = (args?.getOrNull(1) as? Int) == PackageManager.PERMISSION_GRANTED
+                        onResult?.invoke(granted)
+                    }
+                    null
+                }
+                addListenerMethod.invoke(null, proxy)
+            } catch (_: Throwable) {
+            }
 
             val reqMethod = shizukuClass.getDeclaredMethod("requestPermission", Int::class.javaPrimitiveType)
             reqMethod.invoke(null, requestCode)

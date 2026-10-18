@@ -92,6 +92,7 @@ fun PermissionsScreen(
         val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
         isIgnoringBattery = pm?.isIgnoringBatteryOptimizations(context.packageName) == true
         isPowerSaveMode = pm?.isPowerSaveMode == true
+        viewModel.refreshBridgeHealth()
     }
 
     DisposableEffect(lifecycleOwner) {
