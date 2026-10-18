@@ -70,6 +70,13 @@ abstract class VitualEmuDatabase : RoomDatabase() {
                 instance
             }
         }
+
+        fun closeAndClearInstance() {
+            synchronized(this) {
+                INSTANCE?.close()
+                INSTANCE = null
+            }
+        }
     }
 }
 

@@ -35,11 +35,30 @@ class VitualEmuRepository(context: Context) {
     private val mappingDao = database.mappingDao()
     private val macroDao = database.macroDao()
     private val snapshotDao = database.profileSnapshotDao()
+    private val prefs = context.getSharedPreferences("vitualemu_prefs", Context.MODE_PRIVATE)
+
+    fun getSelectedGamePackage(): String? {
+        return prefs.getString("selected_game_package", null)
+    }
+
+    fun setSelectedGamePackage(packageName: String) {
+        prefs.edit().putString("selected_game_package", packageName).apply()
+    }
+
+    fun getTargetedGames(): Flow<List<Game>> {
+        return gameDao.getTargetedGames().map { list ->
+            list.map { it.toDomain() }
+        }
+    }
 
     fun getAllGames(): Flow<List<Game>> {
         return gameDao.getAllGames().map { list ->
             list.map { it.toDomain() }
         }
+    }
+
+    suspend fun getAllSavedGamesList(): List<Game> = withContext(Dispatchers.IO) {
+        gameDao.getAllGamesList().map { it.toDomain() }
     }
 
     suspend fun getGameByPackage(packageName: String): Game? = withContext(Dispatchers.IO) {
@@ -60,6 +79,42 @@ class VitualEmuRepository(context: Context) {
 
     suspend fun deleteGame(game: Game) = withContext(Dispatchers.IO) {
         gameDao.deleteGame(game.toEntity())
+    }
+
+    suspend fun syncGameSelections(
+        selectedPackageNames: Set<String>,
+        getDisplayName: (String) -> String
+    ) = withContext(Dispatchers.IO) {
+        database.runInTransaction {
+            kotlinx.coroutines.runBlocking {
+                val existingEntities = gameDao.getAllGamesList()
+                val existingMap = existingEntities.associateBy { it.packageName }
+
+                // Update existing records
+                for (entity in existingEntities) {
+                    val shouldBeTargeted = selectedPackageNames.contains(entity.packageName)
+                    if (entity.isTargeted != shouldBeTargeted) {
+                        gameDao.updateGame(entity.copy(isTargeted = shouldBeTargeted))
+                    }
+                }
+
+                // Insert new selections that do not exist yet in Room
+                for (pkg in selectedPackageNames) {
+                    if (!existingMap.containsKey(pkg)) {
+                        val displayName = getDisplayName(pkg).ifBlank { pkg.substringAfterLast('.') }
+                        val newGame = GameEntity(
+                            gameId = UUID.randomUUID().toString(),
+                            packageName = pkg,
+                            displayName = displayName,
+                            iconUri = null,
+                            isTargeted = true,
+                            addedAt = System.currentTimeMillis()
+                        )
+                        gameDao.insertGame(newGame)
+                    }
+                }
+            }
+        }
     }
 
     fun getProfilesForGame(gameId: String): Flow<List<Profile>> {

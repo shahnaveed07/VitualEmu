@@ -1,7 +1,6 @@
 package com.dsc.virtualemu
 
 import android.app.Application
-import androidx.room.Room
 import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.sqlite.db.SupportSQLiteOpenHelper
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
@@ -21,6 +20,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowLooper
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
@@ -31,6 +31,8 @@ class DatabaseMigrationAndViewModelTest {
     @Before
     fun setUp() {
         application = ApplicationProvider.getApplicationContext<Application>()
+        VitualEmuDatabase.closeAndClearInstance()
+        application.deleteDatabase("vitualemu.db")
     }
 
     @Test
@@ -90,10 +92,6 @@ class DatabaseMigrationAndViewModelTest {
 
     @Test
     fun testViewModel_initialStateHasNoActiveGameAndCanAddRemoveGame() = runBlocking {
-        val db = Room.inMemoryDatabaseBuilder(application, VitualEmuDatabase::class.java)
-            .allowMainThreadQueries()
-            .build()
-
         val viewModel = VitualEmuViewModel(application)
 
         // In empty state, activeGame must be null
@@ -111,7 +109,7 @@ class DatabaseMigrationAndViewModelTest {
 
         var attempts = 0
         while (viewModel.activeGame.value == null && attempts < 20) {
-            org.robolectric.shadows.ShadowLooper.idleMainLooper()
+            ShadowLooper.idleMainLooper()
             Thread.sleep(50)
             attempts++
         }
@@ -127,14 +125,194 @@ class DatabaseMigrationAndViewModelTest {
 
         attempts = 0
         while (viewModel.activeGame.value != null && attempts < 20) {
-            org.robolectric.shadows.ShadowLooper.idleMainLooper()
+            ShadowLooper.idleMainLooper()
             Thread.sleep(50)
             attempts++
         }
 
         val activeGameAfterRemove = viewModel.activeGame.value
         assertNull("Active game should be null after removing active game", activeGameAfterRemove)
+    }
 
-        db.close()
+    @Test
+    fun testSyncSelection_addsUnselectsAndRestoresSelectionWithoutDeletingProfiles() = runBlocking {
+        val viewModel = VitualEmuViewModel(application)
+
+        val pkg1 = "com.test.game1"
+        val pkg2 = "com.test.game2"
+
+        // 1. Sync selection with 2 games
+        viewModel.syncSelection(setOf(pkg1, pkg2))
+
+        var attempts = 0
+        while (viewModel.games.value.size < 2 && attempts < 20) {
+            ShadowLooper.idleMainLooper()
+            Thread.sleep(50)
+            attempts++
+        }
+
+        assertEquals(2, viewModel.games.value.size)
+        val targetedPackages = viewModel.games.value.map { it.packageName }.toSet()
+        assertTrue(targetedPackages.contains(pkg1))
+        assertTrue(targetedPackages.contains(pkg2))
+
+        // Create a custom profile for game1
+        val game1 = viewModel.games.value.first { it.packageName == pkg1 }
+        viewModel.selectGame(game1)
+
+        ShadowLooper.idleMainLooper()
+        viewModel.createNewProfile("Game 1 Special Controls")
+
+        attempts = 0
+        while (viewModel.profiles.value.isEmpty() && attempts < 20) {
+            ShadowLooper.idleMainLooper()
+            Thread.sleep(50)
+            attempts++
+        }
+
+        val savedProfileName = viewModel.profiles.value.firstOrNull()?.name
+        assertEquals("Game 1 Special Controls", savedProfileName)
+
+        // 2. Uncheck game1 (sync selection with only pkg2)
+        viewModel.syncSelection(setOf(pkg2))
+
+        attempts = 0
+        while (viewModel.games.value.any { it.packageName == pkg1 } && attempts < 20) {
+            ShadowLooper.idleMainLooper()
+            Thread.sleep(50)
+            attempts++
+        }
+
+        // Verify game1 is hidden from Home
+        assertEquals(1, viewModel.games.value.size)
+        assertEquals(pkg2, viewModel.games.value.first().packageName)
+
+        // Verify game1 record still exists in allSavedGames with isTargeted = false
+        val allSaved = viewModel.allSavedGames.value
+        val game1Saved = allSaved.find { it.packageName == pkg1 }
+        assertNotNull("Game 1 record should remain in database", game1Saved)
+        assertFalse("Game 1 isTargeted should be false", game1Saved!!.isTargeted)
+
+        // 3. Re-check game1 (sync selection with pkg1 and pkg2)
+        viewModel.syncSelection(setOf(pkg1, pkg2))
+
+        attempts = 0
+        while (viewModel.games.value.size < 2 && attempts < 20) {
+            ShadowLooper.idleMainLooper()
+            Thread.sleep(50)
+            attempts++
+        }
+
+        assertEquals(2, viewModel.games.value.size)
+
+        // Verify profile was preserved and not deleted
+        val game1Restored = viewModel.games.value.first { it.packageName == pkg1 }
+        viewModel.selectGame(game1Restored)
+
+        attempts = 0
+        while (viewModel.profiles.value.isEmpty() && attempts < 20) {
+            ShadowLooper.idleMainLooper()
+            Thread.sleep(50)
+            attempts++
+        }
+
+        assertEquals("Game 1 Special Controls", viewModel.profiles.value.first().name)
+    }
+
+    @Test
+    fun testSyncSelection_emptySelectionProducesEmptyHomeState() = runBlocking {
+        val viewModel = VitualEmuViewModel(application)
+
+        val pkg1 = "com.test.emptytest"
+        viewModel.syncSelection(setOf(pkg1))
+
+        var attempts = 0
+        while (viewModel.games.value.isEmpty() && attempts < 20) {
+            ShadowLooper.idleMainLooper()
+            Thread.sleep(50)
+            attempts++
+        }
+
+        assertEquals(1, viewModel.games.value.size)
+
+        // Uncheck all games
+        viewModel.syncSelection(emptySet())
+
+        attempts = 0
+        while (viewModel.games.value.isNotEmpty() && attempts < 20) {
+            ShadowLooper.idleMainLooper()
+            Thread.sleep(50)
+            attempts++
+        }
+
+        assertTrue("Home games should be empty after unchecking all apps", viewModel.games.value.isEmpty())
+        assertNull("Active game should be null when Home games are empty", viewModel.activeGame.value)
+    }
+
+    @Test
+    fun testPersistence_acrossViewModelRecreation() = runBlocking {
+        val viewModel1 = VitualEmuViewModel(application)
+        val pkg = "com.test.persistedgame"
+
+        viewModel1.syncSelection(setOf(pkg))
+
+        var attempts = 0
+        while (viewModel1.games.value.isEmpty() && attempts < 20) {
+            ShadowLooper.idleMainLooper()
+            Thread.sleep(50)
+            attempts++
+        }
+
+        assertEquals(1, viewModel1.games.value.size)
+
+        // Recreate ViewModel (simulating app restart)
+        val viewModel2 = VitualEmuViewModel(application)
+
+        attempts = 0
+        while (viewModel2.games.value.isEmpty() && attempts < 20) {
+            ShadowLooper.idleMainLooper()
+            Thread.sleep(50)
+            attempts++
+        }
+
+        assertEquals("Persisted selection must load on new ViewModel creation", 1, viewModel2.games.value.size)
+        assertEquals(pkg, viewModel2.games.value.first().packageName)
+        assertNotNull("Active game should be restored on restart", viewModel2.activeGame.value)
+        assertEquals(pkg, viewModel2.activeGame.value?.packageName)
+    }
+
+    @Test
+    fun testActiveGameDesynchronization_selectsNextAvailableTargetedGame() = runBlocking {
+        val viewModel = VitualEmuViewModel(application)
+
+        val pkg1 = "com.test.gameA"
+        val pkg2 = "com.test.gameB"
+
+        viewModel.syncSelection(setOf(pkg1, pkg2))
+
+        var attempts = 0
+        while (viewModel.games.value.size < 2 && attempts < 20) {
+            ShadowLooper.idleMainLooper()
+            Thread.sleep(50)
+            attempts++
+        }
+
+        val gameA = viewModel.games.value.first { it.packageName == pkg1 }
+        viewModel.selectGame(gameA)
+
+        assertEquals(pkg1, viewModel.activeGame.value?.packageName)
+
+        // Remove / uncheck active gameA
+        viewModel.removeGame(gameA.gameId)
+
+        attempts = 0
+        while (viewModel.activeGame.value?.packageName == pkg1 && attempts < 20) {
+            ShadowLooper.idleMainLooper()
+            Thread.sleep(50)
+            attempts++
+        }
+
+        // Verify activeGame transitioned to gameB
+        assertEquals("Active game should switch to remaining targeted game", pkg2, viewModel.activeGame.value?.packageName)
     }
 }

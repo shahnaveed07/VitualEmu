@@ -115,7 +115,6 @@ fun VitualEmuApp(viewModel: VitualEmuViewModel) {
 
     val isTopLevelTab = currentRoute in listOf(
         NavDestinations.HOME,
-        NavDestinations.GAMES,
         NavDestinations.PROFILES,
         NavDestinations.SETTINGS
     )

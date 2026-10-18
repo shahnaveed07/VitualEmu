@@ -70,8 +70,11 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
     val macroEngine = MacroEngine(multiTouchDispatcher, viewModelScope)
     val keymapEngine = KeymapTranslationEngine(multiTouchDispatcher, mouseLookEngine, macroEngine)
 
-    val games: StateFlow<List<Game>> = repository.getAllGames()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val allSavedGames: StateFlow<List<Game>> = repository.getAllGames()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    val games: StateFlow<List<Game>> = repository.getTargetedGames()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     private val _activeGame = MutableStateFlow<Game?>(null)
     val activeGame: StateFlow<Game?> = _activeGame.asStateFlow()
@@ -90,6 +93,9 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
 
     private val _isDiscoveringApps = MutableStateFlow(false)
     val isDiscoveringApps: StateFlow<Boolean> = _isDiscoveringApps.asStateFlow()
+
+    private val _isSyncingSelection = MutableStateFlow(false)
+    val isSyncingSelection: StateFlow<Boolean> = _isSyncingSelection.asStateFlow()
 
     private val _bridgeStatus = MutableStateFlow(
         BridgeStatus(
@@ -129,6 +135,28 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
         val landscapeH = minOf(dm.widthPixels, dm.heightPixels).coerceAtLeast(720)
         mouseLookEngine.updateDisplaySize(landscapeW, landscapeH)
 
+        // Sync active game whenever targeted games flow updates
+        viewModelScope.launch {
+            games.collect { targetedList ->
+                if (targetedList.isEmpty()) {
+                    if (_activeGame.value != null) {
+                        _activeGame.value = null
+                        _activeProfile.value = null
+                        _profiles.value = emptyList()
+                    }
+                } else {
+                    val savedPkg = repository.getSelectedGamePackage()
+                    val savedMatch = targetedList.find { it.packageName == savedPkg }
+                    val currentMatch = targetedList.find { it.gameId == _activeGame.value?.gameId }
+                    val targetToSelect = savedMatch ?: currentMatch ?: targetedList.first()
+
+                    if (_activeGame.value?.gameId != targetToSelect.gameId) {
+                        selectGame(targetToSelect)
+                    }
+                }
+            }
+        }
+
         // Wire physical peripheral hot-plug disconnect directly into full multi-touch & bridge release
         deviceManager.setOnPeripheralDisconnectedListener { reason ->
             viewModelScope.launch {
@@ -167,10 +195,25 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
     fun discoverInstalledApps() {
         viewModelScope.launch {
             _isDiscoveringApps.value = true
-            val existingPackages = games.value.map { it.packageName }.toSet()
-            val apps = appDiscoveryUseCase.discoverInstalledApps(existingPackages)
+            val savedGames = repository.getAllSavedGamesList()
+            val targetedPackages = savedGames.filter { it.isTargeted }.map { it.packageName }.toSet()
+            val apps = appDiscoveryUseCase.discoverInstalledApps(targetedPackages)
             _installedApps.value = apps
             _isDiscoveringApps.value = false
+        }
+    }
+
+    fun syncSelection(selectedPackageNames: Set<String>, onComplete: () -> Unit = {}) {
+        if (_isSyncingSelection.value) return
+        viewModelScope.launch {
+            _isSyncingSelection.value = true
+            val appMap = _installedApps.value.associateBy { it.packageName }
+            repository.syncGameSelections(selectedPackageNames) { pkg ->
+                appMap[pkg]?.displayName ?: pkg.substringAfterLast('.')
+            }
+            _isSyncingSelection.value = false
+            showFeedback("Selection saved (${selectedPackageNames.size} game(s) selected)")
+            onComplete()
         }
     }
 
@@ -200,8 +243,9 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             val existing = repository.getGameByPackage(app.packageName)
             if (existing != null) {
-                selectGame(existing)
-                showFeedback("Game already added: ${existing.displayName}")
+                repository.updateGame(existing.copy(isTargeted = true))
+                selectGame(existing.copy(isTargeted = true))
+                showFeedback("Game added to Home: ${existing.displayName}")
                 return@launch
             }
             val game = Game(
@@ -217,44 +261,24 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun addMultipleInstalledGames(apps: List<InstalledApp>) {
         if (apps.isEmpty()) return
-        viewModelScope.launch {
-            var addedCount = 0
-            for (app in apps) {
-                if (app.packageName.isNotBlank()) {
-                    val existing = repository.getGameByPackage(app.packageName)
-                    if (existing == null) {
-                        val game = Game(
-                            packageName = app.packageName,
-                            displayName = app.displayName,
-                            isTargeted = true
-                        )
-                        repository.insertGame(game)
-                        addedCount++
-                    }
-                }
-            }
-            if (addedCount > 0) {
-                showFeedback("Added $addedCount game(s) to library")
-                val lastAdded = apps.lastOrNull()
-                if (lastAdded != null) {
-                    val game = repository.getGameByPackage(lastAdded.packageName)
-                    if (game != null) selectGame(game)
-                }
-            } else {
-                showFeedback("Selected games were already in library")
-            }
-        }
+        val packageNames = apps.map { it.packageName }.toSet()
+        syncSelection(packageNames)
     }
 
     fun removeGame(gameId: String) {
         viewModelScope.launch {
             val game = repository.getGameById(gameId)
             if (game != null) {
-                repository.deleteGame(game)
+                repository.updateGame(game.copy(isTargeted = false))
                 if (_activeGame.value?.gameId == gameId) {
-                    _activeGame.value = null
-                    _activeProfile.value = null
-                    _profiles.value = emptyList()
+                    val remaining = games.value.filter { it.gameId != gameId }
+                    if (remaining.isNotEmpty()) {
+                        selectGame(remaining.first())
+                    } else {
+                        _activeGame.value = null
+                        _activeProfile.value = null
+                        _profiles.value = emptyList()
+                    }
                 }
                 showFeedback("Removed game: ${game.displayName}")
             }
@@ -263,8 +287,8 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun selectGame(game: Game) {
         _activeGame.value = game
+        repository.setSelectedGamePackage(game.packageName)
         viewModelScope.launch {
-            repository.updateGame(game.copy(lastPlayedAt = System.currentTimeMillis()))
             repository.getProfilesForGame(game.gameId).collect { profileList ->
                 _profiles.value = profileList
                 if (profileList.isNotEmpty()) {

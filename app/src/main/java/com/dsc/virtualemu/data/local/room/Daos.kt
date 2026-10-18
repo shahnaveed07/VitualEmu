@@ -11,8 +11,14 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface GameDao {
+    @Query("SELECT * FROM games WHERE isTargeted = 1 ORDER BY lastPlayedAt DESC, addedAt DESC")
+    fun getTargetedGames(): Flow<List<GameEntity>>
+
     @Query("SELECT * FROM games ORDER BY lastPlayedAt DESC, addedAt DESC")
     fun getAllGames(): Flow<List<GameEntity>>
+
+    @Query("SELECT * FROM games")
+    suspend fun getAllGamesList(): List<GameEntity>
 
     @Query("SELECT * FROM games WHERE gameId = :gameId")
     suspend fun getGameById(gameId: String): GameEntity?
@@ -23,11 +29,20 @@ interface GameDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertGame(game: GameEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertGames(games: List<GameEntity>)
+
     @Update
     suspend fun updateGame(game: GameEntity)
 
+    @Update
+    suspend fun updateGames(games: List<GameEntity>)
+
     @Delete
     suspend fun deleteGame(game: GameEntity)
+
+    @Query("UPDATE games SET isTargeted = :isTargeted WHERE packageName = :packageName")
+    suspend fun updateTargetedStatusByPackage(packageName: String, isTargeted: Boolean)
 }
 
 @Dao
