@@ -20,7 +20,9 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.SeekBar
 import android.widget.TextView
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -39,6 +41,18 @@ object PlayModeOverlayRuntimeBridge {
     val isInputGrabEnabled: StateFlow<Boolean> = _isInputGrabEnabled.asStateFlow()
 
     @Volatile
+    var activeGameName: String = "Game"
+
+    @Volatile
+    var activeProfileName: String = "Profile"
+
+    @Volatile
+    var sensitivityX: Float = 1.2f
+
+    @Volatile
+    var sensitivityY: Float = 1.0f
+
+    @Volatile
     var onPhysicalKeyCaptured: ((keyCode: Int, isDown: Boolean) -> Unit)? = null
 
     @Volatile
@@ -49,6 +63,12 @@ object PlayModeOverlayRuntimeBridge {
 
     @Volatile
     var onEmergencyStopRequested: ((reason: String) -> Unit)? = null
+
+    @Volatile
+    var onUpdateSensitivityRequested: ((sensX: Float, sensY: Float) -> Unit)? = null
+
+    @Volatile
+    var onOpenMappingEditorRequested: (() -> Unit)? = null
 
     fun markServiceRunning(running: Boolean) {
         _isOverlayServiceRunning.value = running
@@ -64,7 +84,7 @@ object PlayModeOverlayRuntimeBridge {
 
 /**
  * Foreground Service managing the system-level floating Play Mode HUD (`TYPE_APPLICATION_OVERLAY`),
- * physical keyboard/mouse capture surface over target games, and a 1-tap notification Emergency Stop.
+ * draggable compact icon & expanded GG Mouse Pro style control panel over running games.
  */
 class PlayModeOverlayService : Service() {
 
@@ -109,6 +129,8 @@ class PlayModeOverlayService : Service() {
     private var overlayRootView: View? = null
     private var overlayLayoutParams: WindowManager.LayoutParams? = null
     private var grabToggleBtn: TextView? = null
+    private var isPanelExpanded = false
+
     private var lastMouseX: Float = Float.NaN
     private var lastMouseY: Float = Float.NaN
 
@@ -182,108 +204,172 @@ class PlayModeOverlayService : Service() {
         }
         overlayLayoutParams = params
 
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            val padH = (10 * density).roundToInt()
-            val padV = (6 * density).roundToInt()
-            setPadding(padH, padV, padH, padV)
+        val container = FrameLayout(this)
+        overlayRootView = container
+
+        showCompactFloatingIconView(container)
+
+        try {
+            wm.addView(container, params)
+        } catch (_: Throwable) {
+        }
+    }
+
+    /**
+     * Compact Draggable Floating Icon View (Collapsed Mode)
+     */
+    private fun showCompactFloatingIconView(container: FrameLayout) {
+        container.removeAllViews()
+        isPanelExpanded = false
+        val density = resources.displayMetrics.density
+
+        val iconBadge = TextView(this).apply {
+            text = "VE"
+            setTextColor(Color.WHITE)
+            textSize = 14f
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.parseColor("#E60F172A"))
+                setStroke((2f * density).roundToInt(), Color.parseColor("#38BDF8"))
+            }
+        }
+
+        val sizePx = (48 * density).roundToInt()
+        val lp = FrameLayout.LayoutParams(sizePx, sizePx)
+        container.addView(iconBadge, lp)
+
+        var initialX = 0
+        var initialY = 0
+        var touchStartX = 0f
+        var touchStartY = 0f
+        var isClick = true
+
+        iconBadge.setOnTouchListener { _, event ->
+            val winParams = overlayLayoutParams ?: return@setOnTouchListener false
+            val wm = windowManager ?: return@setOnTouchListener false
+
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    initialX = winParams.x
+                    initialY = winParams.y
+                    touchStartX = event.rawX
+                    touchStartY = event.rawY
+                    isClick = true
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = event.rawX - touchStartX
+                    val dy = event.rawY - touchStartY
+                    if (kotlin.math.abs(dx) > 6 || kotlin.math.abs(dy) > 6) {
+                        isClick = false
+                    }
+                    winParams.x = initialX + dx.roundToInt()
+                    winParams.y = initialY + dy.roundToInt()
+                    try {
+                        wm.updateViewLayout(container, winParams)
+                    } catch (_: Throwable) {
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    if (isClick) {
+                        showExpandedControlPanel(container)
+                    }
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+
+    /**
+     * Expanded GG Mouse Pro Style Control Panel View
+     */
+    private fun showExpandedControlPanel(container: FrameLayout) {
+        container.removeAllViews()
+        isPanelExpanded = true
+        val density = resources.displayMetrics.density
+
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = (12 * density).roundToInt()
+            setPadding(pad, pad, pad, pad)
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
                 cornerRadius = 14f * density
-                setColor(Color.parseColor("#E60F172A"))
+                setColor(Color.parseColor("#F00F172A"))
                 setStroke((1.5f * density).roundToInt(), Color.parseColor("#38BDF8"))
             }
             isFocusable = true
             isFocusableInTouchMode = true
         }
 
-        // Drag handle title
+        val widthPx = (380 * density).roundToInt()
+        container.addView(panel, FrameLayout.LayoutParams(widthPx, FrameLayout.LayoutParams.WRAP_CONTENT))
+
+        // 1. Header Row
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
         val titleView = TextView(this).apply {
-            text = "VitualEmu HUD"
+            text = "${PlayModeOverlayRuntimeBridge.activeGameName} • ${PlayModeOverlayRuntimeBridge.activeProfileName}"
             setTextColor(Color.WHITE)
-            textSize = 11f
+            textSize = 12f
             typeface = Typeface.DEFAULT_BOLD
-            setPadding(0, 0, (8 * density).roundToInt(), 0)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
-        container.addView(titleView)
+        header.addView(titleView)
 
-        // Input Grab Toggle Button
-        val grabBtn = TextView(this).apply {
-            text = "GRAB: OFF"
-            setTextColor(Color.parseColor("#0F172A"))
-            textSize = 10f
+        val minimizeBtn = TextView(this).apply {
+            text = " — "
+            setTextColor(Color.parseColor("#94A3B8"))
+            textSize = 14f
             typeface = Typeface.DEFAULT_BOLD
-            val ph = (8 * density).roundToInt()
-            val pv = (4 * density).roundToInt()
-            setPadding(ph, pv, ph, pv)
-            background = GradientDrawable().apply {
-                cornerRadius = 8f * density
-                setColor(Color.parseColor("#38BDF8"))
-            }
+            setPadding((8 * density).roundToInt(), 0, (8 * density).roundToInt(), 0)
             setOnClickListener {
-                val next = !PlayModeOverlayRuntimeBridge.isInputGrabEnabled.value
-                updateOverlayFocusableMode(next)
+                showCompactFloatingIconView(container)
             }
         }
-        grabToggleBtn = grabBtn
-        container.addView(grabBtn)
+        header.addView(minimizeBtn)
 
-        // Aim Mode Toggle Button
-        val aimBtn = TextView(this).apply {
-            text = "360° AIM"
-            setTextColor(Color.WHITE)
-            textSize = 10f
+        val closeBtn = TextView(this).apply {
+            text = " ✕ "
+            setTextColor(Color.parseColor("#94A3B8"))
+            textSize = 14f
             typeface = Typeface.DEFAULT_BOLD
-            val ph = (8 * density).roundToInt()
-            val pv = (4 * density).roundToInt()
-            setPadding(ph, pv, ph, pv)
+            setPadding((8 * density).roundToInt(), 0, (8 * density).roundToInt(), 0)
             setOnClickListener {
-                PlayModeOverlayRuntimeBridge.onToggleShootingModeRequested?.invoke()
+                showCompactFloatingIconView(container)
             }
         }
-        container.addView(aimBtn)
+        header.addView(closeBtn)
+        panel.addView(header)
 
-        // Emergency Stop Button
-        val stopBtn = TextView(this).apply {
-            text = "SAFE STOP"
-            setTextColor(Color.WHITE)
-            textSize = 10f
-            typeface = Typeface.DEFAULT_BOLD
-            val ph = (8 * density).roundToInt()
-            val pv = (4 * density).roundToInt()
-            setPadding(ph, pv, ph, pv)
-            background = GradientDrawable().apply {
-                cornerRadius = 8f * density
-                setColor(Color.parseColor("#EF4444"))
-            }
-            setOnClickListener {
-                PlayModeOverlayRuntimeBridge.onEmergencyStopRequested?.invoke("Overlay Floating HUD Safe Stop")
-                updateOverlayFocusableMode(false)
-            }
-        }
-        container.addView(stopBtn)
-
-        // Allow dragging the HUD pill by dragging the title label
+        // Allow dragging by header
         var initialX = 0
         var initialY = 0
         var touchStartX = 0f
         var touchStartY = 0f
-        titleView.setOnTouchListener { _, event ->
-            val lp = overlayLayoutParams ?: return@setOnTouchListener false
+        header.setOnTouchListener { _, event ->
+            val winParams = overlayLayoutParams ?: return@setOnTouchListener false
+            val wm = windowManager ?: return@setOnTouchListener false
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
-                    initialX = lp.x
-                    initialY = lp.y
+                    initialX = winParams.x
+                    initialY = winParams.y
                     touchStartX = event.rawX
                     touchStartY = event.rawY
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    lp.x = initialX + (event.rawX - touchStartX).roundToInt()
-                    lp.y = initialY + (event.rawY - touchStartY).roundToInt()
+                    winParams.x = initialX + (event.rawX - touchStartX).roundToInt()
+                    winParams.y = initialY + (event.rawY - touchStartY).roundToInt()
                     try {
-                        wm.updateViewLayout(container, lp)
+                        wm.updateViewLayout(container, winParams)
                     } catch (_: Throwable) {
                     }
                     true
@@ -292,8 +378,164 @@ class PlayModeOverlayService : Service() {
             }
         }
 
-        // Physical Key & Mouse capture listeners when Grab Mode is active
-        container.setOnKeyListener { _, keyCode, keyEvent ->
+        // 2. Sensitivity X & Y Controls Row
+        val sensRow = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, (8 * density).roundToInt(), 0, (8 * density).roundToInt())
+        }
+
+        var curSensX = PlayModeOverlayRuntimeBridge.sensitivityX
+        var curSensY = PlayModeOverlayRuntimeBridge.sensitivityY
+
+        val sensXLabel = TextView(this).apply {
+            text = "Mouse Sensitivity X: ${"%.1f".format(curSensX)}"
+            setTextColor(Color.parseColor("#CBD5E1"))
+            textSize = 10f
+        }
+        sensRow.addView(sensXLabel)
+
+        val sensXBar = SeekBar(this).apply {
+            max = 28 // 0.2 to 3.0
+            progress = ((curSensX - 0.2f) * 10f).roundToInt().coerceIn(0, 28)
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                    curSensX = 0.2f + (progress / 10f)
+                    sensXLabel.text = "Mouse Sensitivity X: ${"%.1f".format(curSensX)}"
+                    if (fromUser) {
+                        PlayModeOverlayRuntimeBridge.onUpdateSensitivityRequested?.invoke(curSensX, curSensY)
+                    }
+                }
+                override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+                override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+            })
+        }
+        sensRow.addView(sensXBar)
+
+        val sensYLabel = TextView(this).apply {
+            text = "Mouse Sensitivity Y: ${"%.1f".format(curSensY)}"
+            setTextColor(Color.parseColor("#CBD5E1"))
+            textSize = 10f
+        }
+        sensRow.addView(sensYLabel)
+
+        val sensYBar = SeekBar(this).apply {
+            max = 28
+            progress = ((curSensY - 0.2f) * 10f).roundToInt().coerceIn(0, 28)
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                    curSensY = 0.2f + (progress / 10f)
+                    sensYLabel.text = "Mouse Sensitivity Y: ${"%.1f".format(curSensY)}"
+                    if (fromUser) {
+                        PlayModeOverlayRuntimeBridge.onUpdateSensitivityRequested?.invoke(curSensX, curSensY)
+                    }
+                }
+                override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+                override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+            })
+        }
+        sensRow.addView(sensYBar)
+        panel.addView(sensRow)
+
+        // 3. Functional Action Buttons Row
+        val actionsRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, (4 * density).roundToInt(), 0, 0)
+        }
+
+        // Edit Key Mapping Button
+        val editMapBtn = TextView(this).apply {
+            text = "KEY MAPPING"
+            setTextColor(Color.parseColor("#0F172A"))
+            textSize = 10f
+            typeface = Typeface.DEFAULT_BOLD
+            val ph = (10 * density).roundToInt()
+            val pv = (6 * density).roundToInt()
+            setPadding(ph, pv, ph, pv)
+            background = GradientDrawable().apply {
+                cornerRadius = 8f * density
+                setColor(Color.parseColor("#38BDF8"))
+            }
+            setOnClickListener {
+                PlayModeOverlayRuntimeBridge.onOpenMappingEditorRequested?.invoke()
+            }
+        }
+        actionsRow.addView(editMapBtn)
+
+        val space1 = View(this).apply { layoutParams = LinearLayout.LayoutParams((6 * density).roundToInt(), 1) }
+        actionsRow.addView(space1)
+
+        // Aim Lock Toggle Button
+        val aimBtn = TextView(this).apply {
+            text = "360° AIM"
+            setTextColor(Color.WHITE)
+            textSize = 10f
+            typeface = Typeface.DEFAULT_BOLD
+            val ph = (8 * density).roundToInt()
+            val pv = (6 * density).roundToInt()
+            setPadding(ph, pv, ph, pv)
+            background = GradientDrawable().apply {
+                cornerRadius = 8f * density
+                setColor(Color.parseColor("#334155"))
+            }
+            setOnClickListener {
+                PlayModeOverlayRuntimeBridge.onToggleShootingModeRequested?.invoke()
+            }
+        }
+        actionsRow.addView(aimBtn)
+
+        val space2 = View(this).apply { layoutParams = LinearLayout.LayoutParams((6 * density).roundToInt(), 1) }
+        actionsRow.addView(space2)
+
+        // Input Grab Button
+        val grabBtn = TextView(this).apply {
+            val isGrab = PlayModeOverlayRuntimeBridge.isInputGrabEnabled.value
+            text = if (isGrab) "GRAB: ON" else "GRAB: OFF"
+            setTextColor(Color.parseColor("#0F172A"))
+            textSize = 10f
+            typeface = Typeface.DEFAULT_BOLD
+            val ph = (8 * density).roundToInt()
+            val pv = (6 * density).roundToInt()
+            setPadding(ph, pv, ph, pv)
+            background = GradientDrawable().apply {
+                cornerRadius = 8f * density
+                setColor(Color.parseColor(if (isGrab) "#22C55E" else "#38BDF8"))
+            }
+            setOnClickListener {
+                val next = !PlayModeOverlayRuntimeBridge.isInputGrabEnabled.value
+                updateOverlayFocusableMode(next)
+            }
+        }
+        grabToggleBtn = grabBtn
+        actionsRow.addView(grabBtn)
+
+        val space3 = View(this).apply { layoutParams = LinearLayout.LayoutParams((6 * density).roundToInt(), 1) }
+        actionsRow.addView(space3)
+
+        // Safe Stop Button
+        val stopBtn = TextView(this).apply {
+            text = "SAFE STOP"
+            setTextColor(Color.WHITE)
+            textSize = 10f
+            typeface = Typeface.DEFAULT_BOLD
+            val ph = (10 * density).roundToInt()
+            val pv = (6 * density).roundToInt()
+            setPadding(ph, pv, ph, pv)
+            background = GradientDrawable().apply {
+                cornerRadius = 8f * density
+                setColor(Color.parseColor("#EF4444"))
+            }
+            setOnClickListener {
+                PlayModeOverlayRuntimeBridge.onEmergencyStopRequested?.invoke("Overlay Floating Control Panel Safe Stop")
+                updateOverlayFocusableMode(false)
+            }
+        }
+        actionsRow.addView(stopBtn)
+
+        panel.addView(actionsRow)
+
+        // Physical Key & Mouse capture listeners
+        panel.setOnKeyListener { _, keyCode, keyEvent ->
             if (!PlayModeOverlayRuntimeBridge.isInputGrabEnabled.value) return@setOnKeyListener false
             val isDown = keyEvent.action == KeyEvent.ACTION_DOWN
             val isUp = keyEvent.action == KeyEvent.ACTION_UP
@@ -305,7 +547,7 @@ class PlayModeOverlayService : Service() {
             }
         }
 
-        container.setOnGenericMotionListener { _, motionEvent ->
+        panel.setOnGenericMotionListener { _, motionEvent ->
             if (!PlayModeOverlayRuntimeBridge.isInputGrabEnabled.value) return@setOnGenericMotionListener false
             val isMouse = (motionEvent.source and InputDevice.SOURCE_MOUSE) == InputDevice.SOURCE_MOUSE ||
                 (motionEvent.source and InputDevice.SOURCE_MOUSE_RELATIVE) == InputDevice.SOURCE_MOUSE_RELATIVE
@@ -359,12 +601,6 @@ class PlayModeOverlayService : Service() {
                 }
                 else -> false
             }
-        }
-
-        try {
-            wm.addView(container, params)
-            overlayRootView = container
-        } catch (_: Throwable) {
         }
     }
 

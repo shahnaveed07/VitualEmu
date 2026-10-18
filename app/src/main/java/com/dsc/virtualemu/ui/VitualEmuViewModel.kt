@@ -180,6 +180,10 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
         PlayModeOverlayRuntimeBridge.onEmergencyStopRequested = { reason ->
             emergencySafeStop(reason)
         }
+        PlayModeOverlayRuntimeBridge.onUpdateSensitivityRequested = { sensX, sensY ->
+            val currentCfg = _activeProfile.value?.mouseLookConfig ?: MouseLookConfig()
+            updateMouseLookConfig(currentCfg.copy(sensitivityX = sensX, sensitivityY = sensY))
+        }
 
         refreshBridgeHealth()
     }
@@ -292,6 +296,7 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
             return
         }
         _activeGame.value = game
+        PlayModeOverlayRuntimeBridge.activeGameName = game.displayName
         repository.setSelectedGamePackage(game.packageName)
         _profileCollectJob?.cancel()
         _profileCollectJob = viewModelScope.launch {
@@ -342,6 +347,9 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun selectProfile(profile: Profile) {
         _activeProfile.value = profile
+        PlayModeOverlayRuntimeBridge.activeProfileName = profile.name
+        PlayModeOverlayRuntimeBridge.sensitivityX = profile.mouseLookConfig.sensitivityX
+        PlayModeOverlayRuntimeBridge.sensitivityY = profile.mouseLookConfig.sensitivityY
         mouseLookEngine.updateConfig(profile.mouseLookConfig)
         val game = _activeGame.value ?: return
         viewModelScope.launch {

@@ -315,4 +315,16 @@ class DatabaseMigrationAndViewModelTest {
         // Verify activeGame transitioned to gameB
         assertEquals("Active game should switch to remaining targeted game", pkg2, viewModel.activeGame.value?.packageName)
     }
+
+    @Test
+    fun testPreflightChecks_detectsMissingBridgeOrOverlay() = runBlocking {
+        val viewModel = VitualEmuViewModel(application)
+
+        val preflightInitial = viewModel.runPreflight()
+        assertFalse("Preflight must fail when bridge and target game are not configured", preflightInitial.isReady)
+        assertTrue("Bridge must be reported as not ready", preflightInitial.blockingErrors.any { it.contains("Input bridge") })
+
+        val checkOverlay = viewModel.checkOverlayPermission()
+        assertNotNull(checkOverlay)
+    }
 }

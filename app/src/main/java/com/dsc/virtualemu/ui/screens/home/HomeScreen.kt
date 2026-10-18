@@ -25,7 +25,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Gamepad
 import androidx.compose.material.icons.filled.Keyboard
@@ -162,33 +161,37 @@ fun HomeScreen(
                     )
                 }
 
-                // Top-Center: Permission Required Banner
-                val isAuthorized = bridgeStatus.state == BridgeHealthState.CONNECTED
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(if (isAuthorized) StatusEmerald.copy(alpha = 0.2f) else Color(0xFFDC2626).copy(alpha = 0.7f))
-                        .clickable(enabled = !isAuthorized, onClick = onNavigateToActivation)
-                        .padding(horizontal = 16.dp, vertical = 7.dp)
-                        .testTag("permission_banner")
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                // Top-Center: Permission Required Banner (Hides automatically when all prerequisites are satisfied)
+                val hasBridge = bridgeStatus.state == BridgeHealthState.CONNECTED && bridgeStatus.isAuthorized
+                val hasOverlay = viewModel.checkOverlayPermission()
+                val isFullyAuthorized = hasBridge && hasOverlay
+
+                if (!isFullyAuthorized) {
+                    val bannerText = if (!hasBridge) "Activation Required" else "Overlay Permission Required"
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(Color(0xFFDC2626).copy(alpha = 0.85f))
+                            .clickable(onClick = onNavigateToActivation)
+                            .padding(horizontal = 16.dp, vertical = 7.dp)
+                            .testTag("permission_banner")
                     ) {
-                        Icon(
-                            imageVector = if (isAuthorized) Icons.Default.CheckCircle else Icons.Default.Shield,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(15.dp)
-                        )
-                        Text(
-                            text = if (isAuthorized) "Bridge Active" else "Permission required",
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        if (!isAuthorized) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Shield,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Text(
+                                text = bannerText,
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                             Icon(
                                 imageVector = Icons.Default.ChevronRight,
                                 contentDescription = null,
