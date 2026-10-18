@@ -285,10 +285,16 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    private var _profileCollectJob: kotlinx.coroutines.Job? = null
+
     fun selectGame(game: Game) {
+        if (_activeGame.value?.gameId == game.gameId && _profileCollectJob?.isActive == true) {
+            return
+        }
         _activeGame.value = game
         repository.setSelectedGamePackage(game.packageName)
-        viewModelScope.launch {
+        _profileCollectJob?.cancel()
+        _profileCollectJob = viewModelScope.launch {
             repository.getProfilesForGame(game.gameId).collect { profileList ->
                 _profiles.value = profileList
                 if (profileList.isNotEmpty()) {

@@ -1,5 +1,6 @@
 package com.dsc.virtualemu.ui.screens.home
 
+import android.annotation.SuppressLint
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -46,6 +47,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
@@ -63,7 +65,6 @@ import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import android.annotation.SuppressLint
 import com.dsc.virtualemu.domain.model.BridgeHealthState
 import com.dsc.virtualemu.domain.model.DeviceType
 import com.dsc.virtualemu.domain.model.Game
@@ -332,7 +333,7 @@ fun HomeScreen(
                         }
                     }
                 } else {
-                    val selectedCardWidth = 180.dp * scaleFactor
+                    val selectedCardWidth = 205.dp * scaleFactor
                     val centerPadding = ((viewportWidth - selectedCardWidth) / 2).coerceAtLeast(16.dp)
 
                     val selectedIndex = remember(games, activeGame) {
@@ -340,18 +341,17 @@ fun HomeScreen(
                         if (idx >= 0) idx else 0
                     }
 
-                    // Calculate currentGamePoint in pixels (center of viewport)
                     val density = LocalDensity.current
-                    val currentGamePointPx = remember(viewportWidth, density) {
-                        with(density) { (viewportWidth / 2).toPx() }
+                    val centerPaddingPx = remember(centerPadding, density) {
+                        with(density) { centerPadding.toPx() }
                     }
                     val maxRadiusPx = remember(scaleFactor, density) {
-                        with(density) { (180.dp * scaleFactor).toPx() }
+                        with(density) { (200.dp * scaleFactor).toPx() }
                     }
 
-                    // Centering animation when active selection changes programmatically
+                    // Programmatic scroll animation executes only when user is NOT actively dragging
                     LaunchedEffect(selectedIndex, games.size) {
-                        if (games.isNotEmpty() && selectedIndex in games.indices) {
+                        if (!lazyListState.isScrollInProgress && games.isNotEmpty() && selectedIndex in games.indices) {
                             lazyListState.animateScrollToItem(selectedIndex, 0)
                         }
                     }
@@ -362,10 +362,8 @@ fun HomeScreen(
                             val layoutInfo = lazyListState.layoutInfo
                             val visibleItems = layoutInfo.visibleItemsInfo
                             if (visibleItems.isNotEmpty()) {
-                                val viewportCenter = (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2
                                 val closestItem = visibleItems.minByOrNull { item ->
-                                    val itemCenter = item.offset + item.size / 2
-                                    kotlin.math.abs(itemCenter - viewportCenter)
+                                    kotlin.math.abs(item.offset - centerPaddingPx)
                                 }
                                 if (closestItem != null && closestItem.index in games.indices) {
                                     val targetGame = games[closestItem.index]
@@ -394,13 +392,12 @@ fun HomeScreen(
                             itemsIndexed(games, key = { _, game -> game.gameId }) { index, game ->
                                 val isSelectedTarget = (activeGame?.gameId == game.gameId) || (activeGame == null && index == 0)
 
-                                // Continuous distance-based fraction calculation from currentGamePoint
-                                val fraction by remember(currentGamePointPx, maxRadiusPx, isSelectedTarget) {
+                                // Continuous distance-based fraction calculation from center alignment offset
+                                val fraction by remember(centerPaddingPx, maxRadiusPx, isSelectedTarget) {
                                     derivedStateOf {
                                         val itemInfo = lazyListState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
                                         if (itemInfo != null) {
-                                            val itemCenterPx = itemInfo.offset + itemInfo.size / 2f
-                                            val distancePx = kotlin.math.abs(itemCenterPx - currentGamePointPx)
+                                            val distancePx = kotlin.math.abs(itemInfo.offset - centerPaddingPx)
                                             (1f - (distancePx / maxRadiusPx)).coerceIn(0f, 1f)
                                         } else if (isSelectedTarget) {
                                             1.0f
@@ -415,11 +412,12 @@ fun HomeScreen(
                                     proximityFraction = fraction,
                                     onSelect = {
                                         viewModel.selectGame(game)
-                                        coroutineScope.launch {
-                                            lazyListState.animateScrollToItem(index, 0)
+                                        if (!lazyListState.isScrollInProgress) {
+                                            coroutineScope.launch {
+                                                lazyListState.animateScrollToItem(index, 0)
+                                            }
                                         }
                                     },
-                                    cardIndigo = cardIndigo,
                                     scaleFactor = scaleFactor
                                 )
                             }
@@ -427,16 +425,18 @@ fun HomeScreen(
 
                         Spacer(modifier = Modifier.height(4.dp))
 
-                        // Start Game Button directly beneath carousel
+                        // Start Game Button directly beneath carousel targeting activeGame
                         Button(
                             onClick = {
-                                val targetPkg = activeGame?.packageName ?: games.firstOrNull()?.packageName ?: ""
+                                val targetPkg = activeGame?.packageName ?: ""
                                 if (targetPkg.isNotBlank()) {
                                     viewModel.launchGame(targetPkg)
                                     viewModel.startPlayMode()
+                                } else {
+                                    viewModel.showFeedback("No game selected")
                                 }
                             },
-                            enabled = games.isNotEmpty(),
+                            enabled = games.isNotEmpty() && activeGame != null,
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = buttonIndigo,
                                 contentColor = Color.White
@@ -459,26 +459,42 @@ private fun ReferenceVerticalGameCard(
     game: Game,
     proximityFraction: Float,
     onSelect: () -> Unit,
-    cardIndigo: Color,
     scaleFactor: Float = 1.0f
 ) {
     // Interpolate card dimensions smoothly based on proximity fraction (0.0 to 1.0)
-    val width = (125.dp + (55.dp * proximityFraction)) * scaleFactor
-    val height = (160.dp + (60.dp * proximityFraction)) * scaleFactor
-    val iconSize = (56.dp + (32.dp * proximityFraction)) * scaleFactor
-    val fontSize = (11f + (5f * proximityFraction)).sp
+    val width = (125.dp + (80.dp * proximityFraction)) * scaleFactor
+    val height = (160.dp + (90.dp * proximityFraction)) * scaleFactor
+    val iconSize = (54.dp + (42.dp * proximityFraction)) * scaleFactor
+    val fontSize = (11f + (7f * proximityFraction)).sp
     val borderWidth = (1f + (1.5f * proximityFraction)).dp
-    val borderAlpha = 0.35f + (0.65f * proximityFraction)
+    val borderAlpha = 0.3f + (0.7f * proximityFraction)
     val isPrimary = proximityFraction > 0.6f
+
+    // Two-tone diagonal slash gradient background matching GG Mouse Pro reference
+    val cardBrush = remember(isPrimary) {
+        if (isPrimary) {
+            Brush.linearGradient(
+                colors = listOf(Color(0xFF6875C4), Color(0xFF485192)),
+                start = Offset(0f, 0f),
+                end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
+            )
+        } else {
+            Brush.linearGradient(
+                colors = listOf(Color(0xFF535BA3), Color(0xFF3B4178)),
+                start = Offset(0f, 0f),
+                end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
+            )
+        }
+    }
 
     Box(
         modifier = Modifier
             .size(width = width, height = height)
             .clip(RoundedCornerShape(12.dp))
-            .background(if (isPrimary) cardIndigo else Color(0xFF535BA3))
+            .background(cardBrush)
             .border(
                 width = borderWidth,
-                color = if (isPrimary) Color.White else Color.White.copy(alpha = borderAlpha),
+                color = if (isPrimary) Color.White.copy(alpha = 0.95f) else Color.White.copy(alpha = borderAlpha),
                 shape = RoundedCornerShape(12.dp)
             )
             .clickable(onClick = onSelect)
@@ -498,7 +514,7 @@ private fun ReferenceVerticalGameCard(
                 packageName = game.packageName,
                 modifier = Modifier
                     .size(iconSize)
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(RoundedCornerShape(18.dp))
             )
 
             // Semi-Transparent Game Title Label Box at Bottom
@@ -508,7 +524,7 @@ private fun ReferenceVerticalGameCard(
                     .clip(RoundedCornerShape(8.dp))
                     .background(Color(0xFF1E1438).copy(alpha = 0.55f))
                     .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
-                    .padding(horizontal = 4.dp, vertical = 4.dp),
+                    .padding(horizontal = 6.dp, vertical = 6.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
