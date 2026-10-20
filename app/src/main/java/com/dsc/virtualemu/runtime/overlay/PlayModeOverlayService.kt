@@ -24,13 +24,19 @@ import android.view.WindowManager
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 sealed class OverlayNavEvent {
@@ -55,7 +61,13 @@ object PlayModeOverlayRuntimeBridge {
     var activeGameName: String = "Game"
 
     @Volatile
+    var targetGamePackageName: String = ""
+
+    @Volatile
     var activeProfileName: String = "Profile"
+
+    @Volatile
+    var activeProfileComponentCount: Int = 0
 
     @Volatile
     var sensitivityX: Float = 1.2f
@@ -86,6 +98,13 @@ object PlayModeOverlayRuntimeBridge {
 
     @Volatile
     var onEmergencyStopRequested: ((reason: String) -> Unit)? = null
+
+    @Volatile
+    var onReleaseAllPointersRequested: (() -> Unit)? = null
+
+    fun releaseAllPointers() {
+        onReleaseAllPointersRequested?.invoke()
+    }
 
     @Volatile
     var onUpdateSensitivityRequested: ((sensX: Float, sensY: Float) -> Unit)? = null
@@ -235,12 +254,54 @@ class PlayModeOverlayService : Service() {
         return try {
             wm.addView(container, params)
             PlayModeOverlayRuntimeBridge.markServiceRunning(true)
+            startForegroundAppMonitoring()
             true
         } catch (_: Throwable) {
             removeOverlayWindow()
             PlayModeOverlayRuntimeBridge.markServiceRunning(false)
             false
         }
+    }
+
+    private var monitoringJob: Job? = null
+    private val serviceScope = CoroutineScope(Dispatchers.Main + Job())
+
+    private fun startForegroundAppMonitoring() {
+        monitoringJob?.cancel()
+        monitoringJob = serviceScope.launch {
+            while (isActive) {
+                val targetPkg = PlayModeOverlayRuntimeBridge.targetGamePackageName
+                val topPkg = getForegroundPackageName(this@PlayModeOverlayService)
+
+                if (targetPkg.isBlank() || topPkg == targetPkg) {
+                    if (overlayRootView?.visibility != View.VISIBLE) {
+                        overlayRootView?.visibility = View.VISIBLE
+                    }
+                } else {
+                    if (overlayRootView?.visibility != View.GONE) {
+                        overlayRootView?.visibility = View.GONE
+                        PlayModeOverlayRuntimeBridge.releaseAllPointers()
+                    }
+                }
+                delay(500L)
+            }
+        }
+    }
+
+    private fun getForegroundPackageName(context: Context): String? {
+        val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as? android.app.usage.UsageStatsManager ?: return null
+        val endTime = System.currentTimeMillis()
+        val startTime = endTime - 10000L
+        val events = try { usm.queryEvents(startTime, endTime) } catch (_: Throwable) { null } ?: return null
+        var topPackage: String? = null
+        val event = android.app.usage.UsageEvents.Event()
+        while (events.hasNextEvent()) {
+            events.getNextEvent(event)
+            if (event.eventType == android.app.usage.UsageEvents.Event.ACTIVITY_RESUMED) {
+                topPackage = event.packageName
+            }
+        }
+        return topPackage
     }
 
     /**

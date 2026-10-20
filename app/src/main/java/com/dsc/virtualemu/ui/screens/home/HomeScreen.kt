@@ -55,7 +55,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -68,11 +67,11 @@ import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.dsc.virtualemu.domain.model.BridgeHealthState
 import com.dsc.virtualemu.domain.model.DeviceType
 import com.dsc.virtualemu.domain.model.Game
 import com.dsc.virtualemu.ui.VitualEmuViewModel
-import com.dsc.virtualemu.ui.theme.StatusEmerald
 import kotlinx.coroutines.launch
 
 @SuppressLint("UnusedBoxWithConstraintsScope")
@@ -82,9 +81,9 @@ fun HomeScreen(
     onNavigateToEditor: () -> Unit,
     onNavigateToActivation: () -> Unit,
     onNavigateToPermissions: () -> Unit = {},
-    onNavigateToTestMode: () -> Unit,
+    onNavigateToTestMode: () -> Unit = {},
+    onNavigateToGames: () -> Unit = {},
     modifier: Modifier = Modifier,
-    onNavigateToGames: () -> Unit = {}
 ) {
     val games by viewModel.games.collectAsState()
     val activeGame by viewModel.activeGame.collectAsState()

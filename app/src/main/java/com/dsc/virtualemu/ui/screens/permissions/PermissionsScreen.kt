@@ -25,9 +25,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -46,7 +46,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -54,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.dsc.virtualemu.ui.VitualEmuViewModel
 import com.dsc.virtualemu.ui.theme.StatusAmber
 import com.dsc.virtualemu.ui.theme.StatusEmerald
@@ -70,6 +70,7 @@ fun PermissionsScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
 
     var hasOverlayPermission by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
+    var hasUsagePermission by remember { mutableStateOf(checkUsageStatsPermission(context)) }
     var isIgnoringBattery by remember {
         mutableStateOf(
             (context.getSystemService(Context.POWER_SERVICE) as? PowerManager)
@@ -84,11 +85,13 @@ fun PermissionsScreen(
     }
 
     var showOverlayHelp by remember { mutableStateOf(false) }
+    var showUsageHelp by remember { mutableStateOf(false) }
     var showBackgroundHelp by remember { mutableStateOf(false) }
     var showPowerSaverHelp by remember { mutableStateOf(false) }
 
     fun refreshState() {
         hasOverlayPermission = Settings.canDrawOverlays(context)
+        hasUsagePermission = checkUsageStatsPermission(context)
         val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
         isIgnoringBattery = pm?.isIgnoringBatteryOptimizations(context.packageName) == true
         isPowerSaveMode = pm?.isPowerSaveMode == true
@@ -243,6 +246,31 @@ fun PermissionsScreen(
                     badgeColor = sectionDarkBadge
                 )
 
+                // Row 3 — Usage Access Permission
+                PermissionRowItem(
+                    title = "Usage Access Permission",
+                    isGranted = hasUsagePermission,
+                    onHelpClick = { showUsageHelp = true },
+                    onGrantClick = {
+                        try {
+                            val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+                            context.startActivity(intent)
+                        } catch (_: Exception) {
+                            try {
+                                val intent = Intent(
+                                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                    Uri.parse("package:${context.packageName}")
+                                )
+                                context.startActivity(intent)
+                            } catch (_: Exception) {
+                                viewModel.showFeedback("Unable to open Usage Access settings page")
+                            }
+                        }
+                    },
+                    rowColor = rowPeriwinkle,
+                    badgeColor = sectionDarkBadge
+                )
+
                 Spacer(modifier = Modifier.height(4.dp))
 
                 // D. Recommended Settings Section
@@ -302,7 +330,7 @@ fun PermissionsScreen(
                                 modifier = Modifier.size(22.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.HelpOutline,
+                                    imageVector = Icons.AutoMirrored.Filled.HelpOutline,
                                     contentDescription = "Help",
                                     tint = Color(0xFFD8B4FE),
                                     modifier = Modifier.size(18.dp)
@@ -348,6 +376,14 @@ fun PermissionsScreen(
     }
 
     // E. Help Explanation Dialogs
+    if (showUsageHelp) {
+        PermissionHelpDialog(
+            title = "Usage Access Permission",
+            description = "VitualEmu uses Usage Access to detect when your target game is in the foreground so the floating control overlay appears only over your game and never over unrelated apps.",
+            onDismiss = { showUsageHelp = false }
+        )
+    }
+
     if (showOverlayHelp) {
         PermissionHelpDialog(
             title = "Overlay Window Permission",
@@ -371,6 +407,17 @@ fun PermissionsScreen(
             onDismiss = { showPowerSaverHelp = false }
         )
     }
+}
+
+fun checkUsageStatsPermission(context: Context): Boolean {
+    val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as? android.app.AppOpsManager ?: return false
+    val mode = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+        appOps.unsafeCheckOpNoThrow(android.app.AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), context.packageName)
+    } else {
+        @Suppress("DEPRECATION")
+        appOps.checkOpNoThrow(android.app.AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), context.packageName)
+    }
+    return mode == android.app.AppOpsManager.MODE_ALLOWED
 }
 
 @Composable
@@ -407,7 +454,7 @@ private fun PermissionRowItem(
                     modifier = Modifier.size(22.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.HelpOutline,
+                        imageVector = Icons.AutoMirrored.Filled.HelpOutline,
                         contentDescription = "Help",
                         tint = Color(0xFFD8B4FE),
                         modifier = Modifier.size(18.dp)

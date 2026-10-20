@@ -3,7 +3,6 @@ package com.dsc.virtualemu.platform.activation.shizuku
 import android.content.pm.PackageManager
 import android.os.IBinder
 import android.os.SystemClock
-import android.view.InputDevice
 import android.view.InputEvent
 import android.view.KeyEvent
 import com.dsc.virtualemu.domain.model.BridgeHealthState

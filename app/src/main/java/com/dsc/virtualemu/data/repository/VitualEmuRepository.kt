@@ -54,6 +54,10 @@ class VitualEmuRepository(context: Context) {
         prefs.edit().putBoolean("ui_test_mode_enabled", enabled).apply()
     }
 
+    fun getSelectedScheme(gameId: String): String? {
+        return prefs.getString("selected_scheme_$gameId", null)
+    }
+
     fun getTargetedGames(): Flow<List<Game>> {
         return gameDao.getTargetedGames().map { list ->
             list.map { it.toDomain() }
@@ -175,6 +179,7 @@ class VitualEmuRepository(context: Context) {
     }
 
     suspend fun setSelectedScheme(gameId: String, selectedProfileId: String) = withContext(Dispatchers.IO) {
+        prefs.edit().putString("selected_scheme_$gameId", selectedProfileId).apply()
         val entities = profileDao.getProfilesForGame(gameId).first()
         for (p in entities) {
             val updated = p.copy(isFavorite = (p.profileId == selectedProfileId), updatedAt = System.currentTimeMillis())

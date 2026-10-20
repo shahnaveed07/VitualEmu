@@ -9,6 +9,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -886,11 +887,14 @@ fun MappingEditorScreen(
                         .background(Color(0xFF0F172A), RoundedCornerShape(12.dp))
                         .border(1.dp, SlateBorder, RoundedCornerShape(12.dp))
                         .focusRequester(focusRequester)
+                        .focusable()
                         .onKeyEvent { keyEvent ->
-                            val nativeCode = keyEvent.nativeKeyEvent.keyCode
-                            val label = KeyEvent.keyCodeToString(nativeCode).removePrefix("KEYCODE_")
-                            capturedKeyCode = nativeCode
-                            capturedKeyLabel = label
+                            if (keyEvent.nativeKeyEvent.action == KeyEvent.ACTION_DOWN) {
+                                val nativeCode = keyEvent.nativeKeyEvent.keyCode
+                                val label = KeyEvent.keyCodeToString(nativeCode).removePrefix("KEYCODE_")
+                                capturedKeyCode = nativeCode
+                                capturedKeyLabel = label
+                            }
                             true
                         }
                         .pointerInput(Unit) {

@@ -401,4 +401,26 @@ class DatabaseMigrationAndViewModelTest {
         val validLaunch = viewModel.launchGame(application.packageName)
         assertTrue("Own package launch should return true", validLaunch)
     }
+
+    @Test
+    fun testSelectGame_autoCreatesDefaultProfileIfEmpty() = runBlocking {
+        val viewModel = VitualEmuViewModel(application)
+        val testApp = InstalledApp(
+            packageName = "com.test.autoprofilegame",
+            displayName = "Auto Profile Game",
+            icon = null,
+            isGame = true
+        )
+        viewModel.addInstalledGame(testApp)
+
+        var attempts = 0
+        while (viewModel.activeProfile.value == null && attempts < 20) {
+            ShadowLooper.idleMainLooper()
+            Thread.sleep(50)
+            attempts++
+        }
+
+        assertNotNull("Selecting game with no profile should auto-create initial profile", viewModel.activeProfile.value)
+        assertEquals("Auto Profile Game Scheme 1", viewModel.activeProfile.value?.name)
+    }
 }

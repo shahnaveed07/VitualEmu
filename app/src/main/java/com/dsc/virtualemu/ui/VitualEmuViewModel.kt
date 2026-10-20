@@ -194,6 +194,9 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
         PlayModeOverlayRuntimeBridge.onEmergencyStopRequested = { reason ->
             emergencySafeStop(reason)
         }
+        PlayModeOverlayRuntimeBridge.onReleaseAllPointersRequested = {
+            emergencySafeStop("Game Scoped Overlay Suspended")
+        }
         PlayModeOverlayRuntimeBridge.onUpdateSensitivityRequested = { sensX, sensY ->
             val currentCfg = _activeProfile.value?.mouseLookConfig ?: MouseLookConfig()
             updateMouseLookConfig(currentCfg.copy(sensitivityX = sensX, sensitivityY = sensY))
@@ -342,19 +345,40 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
             return
         }
         _activeGame.value = game
+        if (_activeProfile.value?.gameId != game.gameId) {
+            _activeProfile.value = null
+        }
         PlayModeOverlayRuntimeBridge.activeGameName = game.displayName
+        PlayModeOverlayRuntimeBridge.targetGamePackageName = game.packageName
         repository.setSelectedGamePackage(game.packageName)
         _profileCollectJob?.cancel()
         _profileCollectJob = viewModelScope.launch {
+            val initialList = repository.getProfilesForGame(game.gameId).first()
+            if (initialList.isEmpty()) {
+                val defaultProfile = Profile(
+                    gameId = game.gameId,
+                    name = "${game.displayName} Scheme 1"
+                )
+                repository.saveProfile(defaultProfile, "Auto-created initial game profile")
+            }
             repository.getProfilesForGame(game.gameId).collect { profileList ->
                 _profiles.value = profileList
                 if (profileList.isNotEmpty()) {
                     val currentId = _activeProfile.value?.profileId
-                    val matched = profileList.find { it.profileId == currentId }
-                    if (matched != null) {
-                        selectProfile(matched)
-                    } else if (_activeProfile.value == null || _activeProfile.value?.gameId != game.gameId) {
-                        selectProfile(profileList.first())
+                    val savedProfileId = repository.getSelectedScheme(game.gameId)
+                    val matchedCurrent = profileList.find { it.profileId == currentId }
+                    val matchedSaved = profileList.find { it.profileId == savedProfileId }
+                    val favorite = profileList.find { it.isFavorite }
+
+                    if (matchedCurrent != null) {
+                        selectProfile(matchedCurrent)
+                    } else if (matchedSaved != null) {
+                        selectProfile(matchedSaved)
+                    } else if (favorite != null) {
+                        selectProfile(favorite)
+                    } else {
+                        val newest = profileList.maxByOrNull { it.updatedAt } ?: profileList.first()
+                        selectProfile(newest)
                     }
                 } else {
                     _activeProfile.value = null
@@ -394,6 +418,7 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
     fun selectProfile(profile: Profile) {
         _activeProfile.value = profile
         PlayModeOverlayRuntimeBridge.activeProfileName = profile.name
+        PlayModeOverlayRuntimeBridge.activeProfileComponentCount = profile.mappings.size
         PlayModeOverlayRuntimeBridge.sensitivityX = profile.mouseLookConfig.sensitivityX
         PlayModeOverlayRuntimeBridge.sensitivityY = profile.mouseLookConfig.sensitivityY
         mouseLookEngine.updateConfig(profile.mouseLookConfig)
@@ -880,12 +905,28 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun addMapping(newMapping: Mapping) {
-        val profile = _activeProfile.value ?: return
-        val updatedList = profile.mappings + newMapping
-        val updatedProfile = profile.copy(mappings = updatedList, updatedAt = System.currentTimeMillis())
-        _activeProfile.value = updatedProfile
         viewModelScope.launch {
+            val game = _activeGame.value
+            val profile = _activeProfile.value ?: run {
+                if (game != null) {
+                    val autoProfile = Profile(
+                        gameId = game.gameId,
+                        name = "${game.displayName} Scheme 1"
+                    )
+                    repository.saveProfile(autoProfile, "Auto-created profile on add control")
+                    _activeProfile.value = autoProfile
+                    autoProfile
+                } else {
+                    null
+                }
+            } ?: return@launch
+
+            val cleanMapping = newMapping.copy(profileId = profile.profileId)
+            val updatedList = profile.mappings + cleanMapping
+            val updatedProfile = profile.copy(mappings = updatedList, updatedAt = System.currentTimeMillis())
+            _activeProfile.value = updatedProfile
             repository.saveProfile(updatedProfile)
+            showFeedback("Added component: ${cleanMapping.name}")
         }
     }
 

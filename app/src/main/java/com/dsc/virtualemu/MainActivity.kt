@@ -1,8 +1,8 @@
+package com.dsc.virtualemu
+
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.os.Bundle
-import com.dsc.virtualemu.runtime.overlay.OverlayNavEvent
-import com.dsc.virtualemu.runtime.overlay.PlayModeOverlayRuntimeBridge
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -38,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -45,14 +46,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.dsc.virtualemu.runtime.overlay.OverlayNavEvent
+import com.dsc.virtualemu.runtime.overlay.PlayModeOverlayRuntimeBridge
 import com.dsc.virtualemu.ui.VitualEmuViewModel
 import com.dsc.virtualemu.ui.navigation.MainTab
 import com.dsc.virtualemu.ui.navigation.NavDestinations
 import com.dsc.virtualemu.ui.screens.activation.ActivationWizardScreen
-import com.dsc.virtualemu.ui.screens.permissions.PermissionsScreen
 import com.dsc.virtualemu.ui.screens.editor.MappingEditorScreen
 import com.dsc.virtualemu.ui.screens.games.AddGameScreen
 import com.dsc.virtualemu.ui.screens.home.HomeScreen
+import com.dsc.virtualemu.ui.screens.permissions.PermissionsScreen
 import com.dsc.virtualemu.ui.screens.playmode.PlayModeHudOverlay
 import com.dsc.virtualemu.ui.screens.profiles.AccountLoginScreen
 import com.dsc.virtualemu.ui.screens.profiles.ProfilesScreen
@@ -107,7 +110,7 @@ fun VitualEmuApp(viewModel: VitualEmuViewModel) {
         }
     }
 
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
 
     LaunchedEffect(Unit) {
         PlayModeOverlayRuntimeBridge.overlayNavEventFlow.collect { event ->
@@ -174,7 +177,7 @@ fun VitualEmuApp(viewModel: VitualEmuViewModel) {
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        MainTab.values().forEach { tab ->
+                        MainTab.entries.forEach { tab ->
                             val selected = currentTab == tab && currentRoute == tab.route
                             Box(
                                 modifier = Modifier
