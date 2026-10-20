@@ -195,7 +195,7 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
             emergencySafeStop(reason)
         }
         PlayModeOverlayRuntimeBridge.onReleaseAllPointersRequested = {
-            emergencySafeStop("Game Scoped Overlay Suspended")
+            suspendSessionPointers("Game Scoped Overlay Suspended")
         }
         PlayModeOverlayRuntimeBridge.onUpdateSensitivityRequested = { sensX, sensY ->
             val currentCfg = _activeProfile.value?.mouseLookConfig ?: MouseLookConfig()
@@ -424,6 +424,7 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
         mouseLookEngine.updateConfig(profile.mouseLookConfig)
         val game = _activeGame.value ?: return
         viewModelScope.launch {
+            repository.saveProfile(profile.copy(isFavorite = true))
             repository.setSelectedScheme(game.gameId, profile.profileId)
         }
     }
@@ -515,8 +516,7 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
                 name = name.trim()
             )
             repository.saveProfile(newProfile, "Initial profile creation")
-            _activeProfile.value = newProfile
-            mouseLookEngine.updateConfig(newProfile.mouseLookConfig)
+            selectProfile(newProfile)
             showFeedback("Created profile: $name")
         }
     }
@@ -883,6 +883,14 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
         sessionManager.emergencySafeStop()
         diagnostics.recordSafeStop(reason)
         showFeedback("EMERGENCY SAFE STOP: All 10 pointer slots & macros neutralized.")
+    }
+
+    fun suspendSessionPointers(reason: String = "Game Scoped Overlay Suspended") {
+        viewModelScope.launch {
+            keymapEngine.neutralizeAll(reason)
+        }
+        sessionManager.pauseSession()
+        diagnostics.recordTouchDispatch(_bridgeStatus.value.lastLatencyMs, "Session Suspended ($reason)")
     }
 
     fun onFocusLoss() {

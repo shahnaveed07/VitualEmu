@@ -423,4 +423,16 @@ class DatabaseMigrationAndViewModelTest {
         assertNotNull("Selecting game with no profile should auto-create initial profile", viewModel.activeProfile.value)
         assertEquals("Auto Profile Game Scheme 1", viewModel.activeProfile.value?.name)
     }
+
+    @Test
+    fun testSuspendSessionPointers_doesNotTriggerEmergencySafeStop() = runBlocking {
+        val viewModel = VitualEmuViewModel(application)
+
+        viewModel.suspendSessionPointers("Test Overlay Suspended")
+        ShadowLooper.idleMainLooper()
+
+        // Session should be in PAUSED_RESET or STOPPED without emergency feedback message
+        val currentSnackbar = viewModel.snackbarMessage.value
+        assertFalse("Routine suspension must not emit emergency safe stop feedback", currentSnackbar?.contains("EMERGENCY SAFE STOP") == true)
+    }
 }

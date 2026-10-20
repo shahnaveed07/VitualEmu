@@ -27,6 +27,8 @@ import android.widget.TextView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -220,6 +222,8 @@ class PlayModeOverlayService : Service() {
     }
 
     override fun onDestroy() {
+        monitoringJob?.cancel()
+        serviceScope.cancel()
         removeOverlayWindow()
         PlayModeOverlayRuntimeBridge.markServiceRunning(false)
         super.onDestroy()
@@ -264,7 +268,11 @@ class PlayModeOverlayService : Service() {
     }
 
     private var monitoringJob: Job? = null
-    private val serviceScope = CoroutineScope(Dispatchers.Main + Job())
+    private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+
+    @Volatile
+    private var lastKnownForegroundPackage: String? = null
+    private var lastQueryTimestampMs: Long = 0L
 
     private fun startForegroundAppMonitoring() {
         monitoringJob?.cancel()
@@ -290,18 +298,20 @@ class PlayModeOverlayService : Service() {
 
     private fun getForegroundPackageName(context: Context): String? {
         val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as? android.app.usage.UsageStatsManager ?: return null
-        val endTime = System.currentTimeMillis()
-        val startTime = endTime - 10000L
-        val events = try { usm.queryEvents(startTime, endTime) } catch (_: Throwable) { null } ?: return null
-        var topPackage: String? = null
+        val now = System.currentTimeMillis()
+        if (lastQueryTimestampMs == 0L) {
+            lastQueryTimestampMs = now - 60000L
+        }
+        val events = try { usm.queryEvents(lastQueryTimestampMs, now) } catch (_: Throwable) { null } ?: return lastKnownForegroundPackage
+        lastQueryTimestampMs = now
         val event = android.app.usage.UsageEvents.Event()
         while (events.hasNextEvent()) {
             events.getNextEvent(event)
             if (event.eventType == android.app.usage.UsageEvents.Event.ACTIVITY_RESUMED) {
-                topPackage = event.packageName
+                lastKnownForegroundPackage = event.packageName
             }
         }
-        return topPackage
+        return lastKnownForegroundPackage
     }
 
     /**
