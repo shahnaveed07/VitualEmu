@@ -265,20 +265,26 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
         return appDiscoveryUseCase.isPackageInstalled(packageName)
     }
 
-    fun launchGame(packageName: String) {
-        if (packageName.isBlank()) return
+    fun launchGame(packageName: String): Boolean {
+        if (packageName.isBlank()) {
+            showFeedback("No game selected to launch")
+            return false
+        }
         val context = getApplication<Application>()
-        try {
+        return try {
             val intent = context.packageManager.getLaunchIntentForPackage(packageName)
             if (intent != null) {
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 context.startActivity(intent)
                 showFeedback("Launching ${packageName.substringAfterLast('.')}...")
+                true
             } else {
                 showFeedback("Unable to launch app: Launch intent not found for $packageName")
+                false
             }
         } catch (e: Exception) {
             showFeedback("Failed to launch $packageName: ${e.localizedMessage}")
+            false
         }
     }
 
@@ -675,7 +681,8 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
         }
         val preflight = runPreflight()
         if (!preflight.isReady) {
-            showFeedback("Preflight check failed. Resolve blockers to start.")
+            val blockingMsg = preflight.blockingErrors.firstOrNull() ?: "Preflight check failed. Resolve blockers to start."
+            showFeedback(blockingMsg)
             return false
         }
         val started = sessionManager.startSession(activeBridge)

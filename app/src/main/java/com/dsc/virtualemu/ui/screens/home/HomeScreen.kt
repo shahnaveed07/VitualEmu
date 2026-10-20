@@ -88,6 +88,7 @@ fun HomeScreen(
 ) {
     val games by viewModel.games.collectAsState()
     val activeGame by viewModel.activeGame.collectAsState()
+    val activeProfile by viewModel.activeProfile.collectAsState()
     val bridgeStatus by viewModel.bridgeStatus.collectAsState()
     val connectedDevices by viewModel.connectedDevices.collectAsState()
 
@@ -527,6 +528,31 @@ fun HomeScreen(
                                     colors = ButtonDefaults.buttonColors(containerColor = buttonIndigo)
                                 ) {
                                     Text("Grant", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+
+                        // Step 3: Game Profile & Keymap Scheme
+                        val hasProfile = activeProfile != null
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFF1E1438))
+                                .padding(10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("3. Game Profile & Keymap Scheme", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 13.sp)
+                                Text(if (hasProfile) "Active Scheme: ${activeProfile?.name}" else "No profile configured for game", color = if (hasProfile) StatusEmerald else StatusAmber, fontSize = 11.sp)
+                            }
+                            if (!hasProfile) {
+                                Button(
+                                    onClick = onNavigateToEditor,
+                                    colors = ButtonDefaults.buttonColors(containerColor = buttonIndigo)
+                                ) {
+                                    Text("Configure", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }

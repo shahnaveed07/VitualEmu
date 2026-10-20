@@ -387,4 +387,18 @@ class DatabaseMigrationAndViewModelTest {
         // Pending launch package should be cleared upon successful launch
         assertNull("Pending launch package must be cleared when launch conditions are met", viewModel.pendingStartGamePkg.value)
     }
+
+    @Test
+    fun testLaunchGame_returnsBooleanStatus() = runBlocking {
+        val viewModel = VitualEmuViewModel(application)
+
+        val emptyLaunch = viewModel.launchGame("")
+        assertFalse("Blank package launch should return false", emptyLaunch)
+
+        val invalidLaunch = viewModel.launchGame("com.nonexistent.package.xyz")
+        assertFalse("Uninstalled package launch should return false", invalidLaunch)
+
+        val validLaunch = viewModel.launchGame(application.packageName)
+        assertTrue("Own package launch should return true", validLaunch)
+    }
 }

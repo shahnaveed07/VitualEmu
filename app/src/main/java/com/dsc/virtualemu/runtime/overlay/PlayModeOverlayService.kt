@@ -206,9 +206,9 @@ class PlayModeOverlayService : Service() {
         super.onDestroy()
     }
 
-    private fun attachOverlayWindowIfNeeded() {
-        if (overlayRootView != null) return
-        val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return
+    private fun attachOverlayWindowIfNeeded(): Boolean {
+        if (overlayRootView != null) return true
+        val wm = getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return false
         windowManager = wm
 
         val density = resources.displayMetrics.density
@@ -232,9 +232,14 @@ class PlayModeOverlayService : Service() {
 
         showCompactFloatingIconView(container)
 
-        try {
+        return try {
             wm.addView(container, params)
+            PlayModeOverlayRuntimeBridge.markServiceRunning(true)
+            true
         } catch (_: Throwable) {
+            removeOverlayWindow()
+            PlayModeOverlayRuntimeBridge.markServiceRunning(false)
+            false
         }
     }
 
@@ -354,7 +359,7 @@ class PlayModeOverlayService : Service() {
 
         if (PlayModeOverlayRuntimeBridge.isTestModePreview) {
             val previewBadge = TextView(this).apply {
-                text = "UI TESTING — INPUT BRIDGE INACTIVE"
+                text = "DEBUG / PREVIEW — INPUT INJECTION NOT VERIFIED"
                 setTextColor(Color.parseColor("#FDE68A"))
                 textSize = 10f
                 typeface = Typeface.DEFAULT_BOLD

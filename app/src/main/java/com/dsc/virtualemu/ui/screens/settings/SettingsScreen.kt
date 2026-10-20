@@ -212,9 +212,9 @@ fun SettingsScreen(
                     rowColor = rowPeriwinkle
                 )
 
-                // Row 6.5: UI Overlay Test Mode
+                // Row 6.5: Debug Mode
                 SettingsSwitchRow(
-                    title = "UI Overlay Test Mode (Preview)",
+                    title = "Debug Mode (UI Overlay Preview)",
                     checked = isUiTestModeEnabled,
                     onCheckedChange = {
                         viewModel.setUiTestModeEnabled(it)
