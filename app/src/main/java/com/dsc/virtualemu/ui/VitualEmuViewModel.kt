@@ -723,14 +723,7 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun resumePendingStartGameLaunchIfNeeded(): Boolean {
         val targetPkg = _pendingStartGamePkg.value ?: return false
-        val preflight = runPreflight()
-        if (preflight.isReady && checkOverlayPermission()) {
-            _pendingStartGamePkg.value = null
-            launchGame(targetPkg)
-            startPlayMode()
-            return true
-        }
-        return false
+        return requestStartGameGated(targetPkg)
     }
 
     fun cancelPendingStartGameLaunch() {
@@ -739,9 +732,10 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun generateShareCode(): String {
         val active = _activeProfile.value ?: return "mkmffkmm5i2"
-        val json = repository.serializeProfileToJson(active)
+        val json = KeymapExportManager.exportToBlueStacksCfg(listOf(active))
         return try {
-            java.util.Base64.getUrlEncoder().encodeToString(json.toByteArray(Charsets.UTF_8)).take(12)
+            val encoded = java.util.Base64.getUrlEncoder().encodeToString(json.toByteArray(Charsets.UTF_8))
+            "VE1-$encoded"
         } catch (_: Throwable) {
             "mkmffkmm5i2"
         }
@@ -754,19 +748,34 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
             return false
         }
         val game = _activeGame.value ?: return false
-        val currentMappings = _activeProfile.value?.mappings ?: emptyList()
-        val newProfile = Profile(
-            profileId = UUID.randomUUID().toString(),
-            gameId = game.gameId,
-            name = "Imported (${trimmed.take(6)})",
-            mappings = currentMappings
-        )
-        viewModelScope.launch {
-            repository.saveProfile(newProfile, "Imported via Share Code $trimmed")
-            selectProfile(newProfile)
-            showFeedback("Successfully imported keymap scheme!")
+        val jsonToParse = try {
+            val rawPayload = if (trimmed.startsWith("VE1-")) trimmed.substringAfter("VE1-") else trimmed
+            val decodedBytes = java.util.Base64.getUrlDecoder().decode(rawPayload)
+            String(decodedBytes, Charsets.UTF_8)
+        } catch (_: Throwable) {
+            trimmed
         }
-        return true
+
+        val parsed = KeymapCfgParser.parseCfgJson(jsonToParse, game.gameId)
+        if (parsed.profiles.isNotEmpty()) {
+            val importedProfile = parsed.profiles.first().copy(
+                profileId = UUID.randomUUID().toString(),
+                gameId = game.gameId,
+                name = "${parsed.profiles.first().name} (Imported)"
+            )
+            viewModelScope.launch {
+                repository.saveProfile(importedProfile, "Imported via Share Code $trimmed")
+                selectProfile(importedProfile)
+                showFeedback("Successfully imported keymap with ${importedProfile.mappings.size} component(s)!")
+            }
+            return true
+        } else if (parsed.warnings.isNotEmpty()) {
+            showFeedback(parsed.warnings.first())
+            return false
+        } else {
+            showFeedback("Invalid or unrecognized share code format")
+            return false
+        }
     }
 
     fun toggleShootingMode() {

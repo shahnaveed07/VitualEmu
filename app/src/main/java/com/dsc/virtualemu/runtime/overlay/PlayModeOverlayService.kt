@@ -20,14 +20,25 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
-import android.widget.FrameLayout
+ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlin.math.roundToInt
+
+sealed class OverlayNavEvent {
+    object OpenEditor : OverlayNavEvent()
+    object ReturnHome : OverlayNavEvent()
+    object OpenSettings : OverlayNavEvent()
+    object OpenProfiles : OverlayNavEvent()
+}
 
 /**
  * Shared runtime coordinator connecting [PlayModeOverlayService] (system `TYPE_APPLICATION_OVERLAY`
@@ -79,11 +90,15 @@ object PlayModeOverlayRuntimeBridge {
     @Volatile
     var onUpdateSensitivityRequested: ((sensX: Float, sensY: Float) -> Unit)? = null
 
-    @Volatile
-    var onOpenMappingEditorRequested: (() -> Unit)? = null
+    private val _overlayNavEventFlow = MutableSharedFlow<OverlayNavEvent>(
+        extraBufferCapacity = 8,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    val overlayNavEventFlow: SharedFlow<OverlayNavEvent> = _overlayNavEventFlow.asSharedFlow()
 
-    @Volatile
-    var onReturnHomeRequested: (() -> Unit)? = null
+    fun emitNavEvent(event: OverlayNavEvent) {
+        _overlayNavEventFlow.tryEmit(event)
+    }
 
     fun markServiceRunning(running: Boolean) {
         _isOverlayServiceRunning.value = running
@@ -362,7 +377,7 @@ class PlayModeOverlayService : Service() {
         }
 
         val homeBtn = createCircularIconButton("⌂") {
-            PlayModeOverlayRuntimeBridge.onReturnHomeRequested?.invoke()
+            PlayModeOverlayRuntimeBridge.emitNavEvent(OverlayNavEvent.ReturnHome)
             showCompactFloatingIconView(container)
         }
         topRow.addView(homeBtn)
@@ -371,6 +386,7 @@ class PlayModeOverlayService : Service() {
         topRow.addView(spacer1)
 
         val settingsBtn = createCircularIconButton("⚙") {
+            PlayModeOverlayRuntimeBridge.emitNavEvent(OverlayNavEvent.OpenSettings)
             showKeymapSettingsPanel(container)
         }
         topRow.addView(settingsBtn)
@@ -388,7 +404,7 @@ class PlayModeOverlayService : Service() {
         })
         row1.addView(View(this).apply { layoutParams = LinearLayout.LayoutParams((12 * density).roundToInt(), 1) })
         row1.addView(createMenuGridCard("✎", "Edit keymap", (130 * density).roundToInt()) {
-            PlayModeOverlayRuntimeBridge.onOpenMappingEditorRequested?.invoke()
+            PlayModeOverlayRuntimeBridge.emitNavEvent(OverlayNavEvent.OpenEditor)
             showCompactFloatingIconView(container)
         })
         gridLayout.addView(row1)

@@ -1,7 +1,8 @@
-package com.dsc.virtualemu
-
+import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.os.Bundle
+import com.dsc.virtualemu.runtime.overlay.OverlayNavEvent
+import com.dsc.virtualemu.runtime.overlay.PlayModeOverlayRuntimeBridge
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -103,6 +104,37 @@ fun VitualEmuApp(viewModel: VitualEmuViewModel) {
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    LaunchedEffect(Unit) {
+        PlayModeOverlayRuntimeBridge.overlayNavEventFlow.collect { event ->
+            when (event) {
+                is OverlayNavEvent.OpenEditor -> {
+                    currentRoute = NavDestinations.EDITOR
+                }
+                is OverlayNavEvent.ReturnHome -> {
+                    currentTab = MainTab.HOME
+                    currentRoute = NavDestinations.HOME
+                }
+                is OverlayNavEvent.OpenSettings -> {
+                    currentTab = MainTab.SETTINGS
+                    currentRoute = NavDestinations.SETTINGS
+                }
+                is OverlayNavEvent.OpenProfiles -> {
+                    currentTab = MainTab.ACCOUNT
+                    currentRoute = NavDestinations.PROFILES
+                }
+            }
+            try {
+                val intent = Intent(context, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                context.startActivity(intent)
+            } catch (_: Throwable) {
+            }
         }
     }
 

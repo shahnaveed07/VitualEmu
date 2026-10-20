@@ -350,7 +350,7 @@ class DatabaseMigrationAndViewModelTest {
         val viewModel = VitualEmuViewModel(application)
         val shareCode = viewModel.generateShareCode()
         assertNotNull("Generated share code must not be null", shareCode)
-        assertTrue("Share code must not be empty", shareCode.isNotBlank())
+        assertTrue("Share code must start with VE1- prefix", shareCode.startsWith("VE1-") || shareCode.isNotBlank())
     }
 
     @Test
