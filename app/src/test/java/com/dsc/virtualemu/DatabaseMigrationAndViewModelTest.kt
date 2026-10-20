@@ -21,6 +21,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowLooper
+import org.robolectric.shadows.ShadowSettings
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
@@ -364,5 +365,26 @@ class DatabaseMigrationAndViewModelTest {
         // Disable UI Test Mode
         viewModel.setUiTestModeEnabled(false)
         assertFalse("UI Test Mode state should be disabled", viewModel.isUiTestModeEnabled.value)
+    }
+
+    @Test
+    fun testRefreshAndResumePendingLaunch_evaluatesAwaitedHealthAndResumesTestMode() = runBlocking {
+        val viewModel = VitualEmuViewModel(application)
+        val pkg = "com.test.resumegated"
+
+        // Request gated start game when prerequisites missing
+        viewModel.requestStartGameGated(pkg)
+        assertEquals(pkg, viewModel.pendingStartGamePkg.value)
+
+        // Grant overlay permission and enable UI Test Mode
+        ShadowSettings.setCanDrawOverlays(true)
+        viewModel.setUiTestModeEnabled(true)
+
+        // Trigger refresh and resume
+        viewModel.refreshAndResumePendingLaunch()
+        ShadowLooper.idleMainLooper()
+
+        // Pending launch package should be cleared upon successful launch
+        assertNull("Pending launch package must be cleared when launch conditions are met", viewModel.pendingStartGamePkg.value)
     }
 }

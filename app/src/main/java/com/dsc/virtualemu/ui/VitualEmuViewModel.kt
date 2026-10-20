@@ -721,9 +721,37 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun resumePendingStartGameLaunchIfNeeded(): Boolean {
-        val targetPkg = _pendingStartGamePkg.value ?: return false
-        return requestStartGameGated(targetPkg)
+    fun refreshAndResumePendingLaunch() {
+        viewModelScope.launch {
+            val status = activeBridge.checkHealth()
+            _bridgeStatus.value = status
+
+            val targetPkg = _pendingStartGamePkg.value ?: return@launch
+            val preflight = runPreflight()
+            val hasOverlay = checkOverlayPermission()
+
+            if (_isUiTestModeEnabled.value) {
+                if (hasOverlay) {
+                    _pendingStartGamePkg.value = null
+                    PlayModeOverlayRuntimeBridge.isTestModePreview = true
+                    launchGame(targetPkg)
+                    val context = getApplication<Application>()
+                    PlayModeOverlayService.start(context)
+                    showFeedback("Started UI Test Mode overlay over ${targetPkg.substringAfterLast('.')}")
+                }
+            } else {
+                if (preflight.isReady && hasOverlay) {
+                    _pendingStartGamePkg.value = null
+                    PlayModeOverlayRuntimeBridge.isTestModePreview = false
+                    launchGame(targetPkg)
+                    startPlayMode()
+                }
+            }
+        }
+    }
+
+    fun resumePendingStartGameLaunchIfNeeded() {
+        refreshAndResumePendingLaunch()
     }
 
     fun cancelPendingStartGameLaunch() {
