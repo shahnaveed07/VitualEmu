@@ -435,4 +435,55 @@ class DatabaseMigrationAndViewModelTest {
         val currentSnackbar = viewModel.snackbarMessage.value
         assertFalse("Routine suspension must not emit emergency safe stop feedback", currentSnackbar?.contains("EMERGENCY SAFE STOP") == true)
     }
+
+    @Test
+    fun testPhysicalKeyBToTouchMapping_endToEnd() = runBlocking {
+        val viewModel = VitualEmuViewModel(application)
+
+        // 1. Add game and create profile
+        val testApp = InstalledApp(
+            packageName = "com.test.keymappinggame",
+            displayName = "Key Mapping Game",
+            icon = null,
+            isGame = true
+        )
+        viewModel.addInstalledGame(testApp)
+
+        var attempts = 0
+        while (viewModel.activeProfile.value == null && attempts < 20) {
+            ShadowLooper.idleMainLooper()
+            Thread.sleep(50)
+            attempts++
+        }
+
+        val activeProfile = viewModel.activeProfile.value
+        assertNotNull("Active profile must exist", activeProfile)
+
+        // 2. Add Tap mapping bound to KeyCode 30 (KEYCODE_B) at (0.4f, 0.6f)
+        val mappingB = com.dsc.virtualemu.domain.model.Mapping(
+            profileId = activeProfile!!.profileId,
+            name = "Button B Tap",
+            type = com.dsc.virtualemu.domain.model.MappingType.TAP,
+            keyCode = 30, // KEYCODE_B
+            keyLabel = "B",
+            normalizedX = 0.4f,
+            normalizedY = 0.6f
+        )
+        viewModel.addMapping(mappingB)
+        ShadowLooper.idleMainLooper()
+
+        // 3. Dispatch Key B Down event
+        viewModel.dispatchSandboxKeyEvent(30, isDown = true)
+        ShadowLooper.idleMainLooper()
+
+        val heldKeysDown = com.dsc.virtualemu.domain.usecase.HeldInputRegistry.heldKeysFlow.value
+        assertTrue("Held keys must record KEYCODE_B (30) on key down", heldKeysDown.contains(30))
+
+        // 4. Dispatch Key B Up event
+        viewModel.dispatchSandboxKeyEvent(30, isDown = false)
+        ShadowLooper.idleMainLooper()
+
+        val heldKeysUp = com.dsc.virtualemu.domain.usecase.HeldInputRegistry.heldKeysFlow.value
+        assertFalse("Held keys must release KEYCODE_B (30) on key up", heldKeysUp.contains(30))
+    }
 }

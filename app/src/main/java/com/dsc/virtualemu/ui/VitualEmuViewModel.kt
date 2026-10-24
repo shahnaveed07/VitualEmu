@@ -15,6 +15,7 @@ import com.dsc.virtualemu.domain.mapping.ParsedCfgData
 import com.dsc.virtualemu.domain.model.BridgeHealthState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import com.dsc.virtualemu.domain.model.BridgeStatus
 import com.dsc.virtualemu.domain.model.BridgeType
@@ -424,7 +425,6 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
         mouseLookEngine.updateConfig(profile.mouseLookConfig)
         val game = _activeGame.value ?: return
         viewModelScope.launch {
-            repository.saveProfile(profile.copy(isFavorite = true))
             repository.setSelectedScheme(game.gameId, profile.profileId)
         }
     }
@@ -513,7 +513,8 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             val newProfile = Profile(
                 gameId = game.gameId,
-                name = name.trim()
+                name = name.trim(),
+                isFavorite = true
             )
             repository.saveProfile(newProfile, "Initial profile creation")
             selectProfile(newProfile)
@@ -710,10 +711,15 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
             showFeedback(blockingMsg)
             return false
         }
-        val started = sessionManager.startSession(activeBridge)
+        var started = false
+        runBlocking {
+            started = sessionManager.startSession(activeBridge)
+        }
         if (started) {
             PlayModeOverlayService.start(context)
             showFeedback("Play Mode Activated! Floating HUD & Multi-Touch Engine active.")
+        } else {
+            showFeedback("Bridge session initialization failed. Verify bridge connection.")
         }
         return started
     }

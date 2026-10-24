@@ -42,8 +42,18 @@ class SessionManager(
         return result
     }
 
-    fun startSession(bridgeAdapter: InputBridgeAdapter): Boolean {
+    suspend fun startSession(bridgeAdapter: InputBridgeAdapter, sessionId: String = "default_session"): Boolean {
         if (_sessionState.value != SessionState.READY && _sessionState.value != SessionState.PAUSED_RESET) {
+            return false
+        }
+        val initialized = bridgeAdapter.initialize()
+        if (!initialized) {
+            _sessionState.value = SessionState.STOPPED
+            return false
+        }
+        val started = bridgeAdapter.startSession(sessionId)
+        if (!started) {
+            _sessionState.value = SessionState.STOPPED
             return false
         }
         _sessionState.value = SessionState.ACTIVE
