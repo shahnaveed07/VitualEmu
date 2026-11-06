@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">VitualEmu</string>
+    <string name="accessibility_service_description">VitualEmu uses this service ONLY to capture physical keyboard key presses while games are running. It maps keyboard and mouse input to on-screen touch controls for mobile gaming. No screen content is read, stored, or transmitted.</string>
 </resources>

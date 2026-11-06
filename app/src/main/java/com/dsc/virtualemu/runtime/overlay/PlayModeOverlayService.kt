@@ -24,6 +24,7 @@ import android.view.WindowManager
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
+import com.dsc.virtualemu.runtime.capture.CaptureState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -58,6 +59,13 @@ object PlayModeOverlayRuntimeBridge {
 
     private val _isInputGrabEnabled = MutableStateFlow(false)
     val isInputGrabEnabled: StateFlow<Boolean> = _isInputGrabEnabled.asStateFlow()
+
+    private val _captureState = MutableStateFlow(CaptureState.NOT_CONFIGURED)
+    val captureState: StateFlow<CaptureState> = _captureState.asStateFlow()
+
+    fun updateCaptureState(state: CaptureState) {
+        _captureState.value = state
+    }
 
     @Volatile
     var activeGameName: String = "Game"

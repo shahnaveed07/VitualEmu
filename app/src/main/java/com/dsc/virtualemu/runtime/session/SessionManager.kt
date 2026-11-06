@@ -9,6 +9,7 @@ import com.dsc.virtualemu.domain.usecase.HeldInputRegistry
 import com.dsc.virtualemu.domain.usecase.PreflightCheckUseCase
 import com.dsc.virtualemu.platform.devices.DeviceManager
 import com.dsc.virtualemu.runtime.bridge.InputBridgeAdapter
+import com.dsc.virtualemu.runtime.capture.CaptureSourceStatus
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,7 +28,8 @@ class SessionManager(
         hasOverlayPermission: Boolean,
         deviceManager: DeviceManager,
         game: Game?,
-        profile: Profile?
+        profile: Profile?,
+        captureSourceStatus: CaptureSourceStatus? = null
     ): PreflightResult {
         _sessionState.value = SessionState.PREFLIGHT
         val result = preflightUseCase(
@@ -35,7 +37,8 @@ class SessionManager(
             hasOverlayPermission = hasOverlayPermission,
             connectedDevices = deviceManager.devicesFlow.value,
             selectedGame = game,
-            activeProfile = profile
+            activeProfile = profile,
+            captureSourceStatus = captureSourceStatus
         )
         _preflightResult.value = result
         _sessionState.value = if (result.isReady) SessionState.READY else SessionState.STOPPED

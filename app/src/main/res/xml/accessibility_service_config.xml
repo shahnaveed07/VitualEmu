@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    VitualEmu Accessibility Service Configuration
+
+    This service captures physical keyboard key events globally via onKeyEvent().
+    It does NOT read screen content, inspect UI nodes, or perform actions on behalf of the user.
+
+    FLAG_REQUEST_FILTER_KEY_EVENTS enables onKeyEvent() for all physical key events system-wide.
+    accessibilityEventTypes="0" means no accessibility events are requested — only key events.
+    canRetrieveWindowContent="false" — no screen content access.
+    canPerformGestures="false" — no gesture injection via this service.
+
+    isAccessibilityTool is NOT set to true because VitualEmu is not an accessibility tool.
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/accessibility_service_description"
+    android:accessibilityEventTypes=""
+    android:accessibilityFlags="flagRequestFilterKeyEvents"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:notificationTimeout="0"
+    android:canRetrieveWindowContent="false"
+    android:canPerformGestures="false"
+    android:settingsActivity="com.dsc.virtualemu.MainActivity" />

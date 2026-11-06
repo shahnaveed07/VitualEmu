@@ -84,6 +84,22 @@
                 android:value="Gaming keyboard and mouse mapping HUD with user-triggered emergency stop" />
         </service>
 
+        <!-- AccessibilityService for global physical keyboard key capture.
+             Only uses onKeyEvent() — does NOT read screen content.
+             canRetrieveWindowContent=false, isAccessibilityTool is NOT set. -->
+        <service
+            android:name=".runtime.capture.VitualEmuAccessibilityService"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true"
+            android:label="VitualEmu Keyboard Capture">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+
         <meta-data
             android:name="moe.shizuku.client.V3_SUPPORT"
             android:value="true" />

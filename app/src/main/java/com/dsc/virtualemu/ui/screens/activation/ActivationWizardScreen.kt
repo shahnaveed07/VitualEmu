@@ -1,5 +1,7 @@
 package com.dsc.virtualemu.ui.screens.activation
 
+import android.content.Intent
+import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -19,6 +21,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.Mouse
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -42,12 +46,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dsc.virtualemu.domain.model.BridgeHealthState
 import com.dsc.virtualemu.domain.model.BridgeType
+import com.dsc.virtualemu.runtime.capture.CaptureSource
 import com.dsc.virtualemu.ui.VitualEmuViewModel
 import com.dsc.virtualemu.ui.components.StatusBadge
 import com.dsc.virtualemu.ui.theme.ElectricBlue
@@ -66,12 +72,16 @@ fun ActivationWizardScreen(
 ) {
     BackHandler { onBack() }
 
+    val context = LocalContext.current
     val bridgeStatus by viewModel.bridgeStatus.collectAsState()
+    val captureStatus by viewModel.captureSourceStatus.collectAsState()
+    val isAccessibilityConnected by viewModel.accessibilityServiceConnected.collectAsState()
     var pairingPortInput by remember { mutableStateOf("5555") }
     var pairingCodeInput by remember { mutableStateOf("") }
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
         viewModel.refreshBridgeHealth()
+        viewModel.refreshCaptureReadiness()
     }
 
     Column(
@@ -149,6 +159,137 @@ fun ActivationWizardScreen(
                         modifier = Modifier.testTag("test_bridge_health_button")
                     ) {
                         Text("Test Bridge Connection", color = MidnightBlue, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            // Physical Hardware Input Capture Setup Card
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, SlateBorder, RoundedCornerShape(14.dp)),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = SlateNavy)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Physical Hardware Input Capture",
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        StatusBadge(
+                            text = if (isAccessibilityConnected || captureStatus.mouseSource != CaptureSource.NONE) "ACTIVE" else "SETUP NEEDED",
+                            color = if (isAccessibilityConnected) StatusEmerald else StatusAmber
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "To map real physical keyboard and mouse to on-screen touch controls, Android requires system-level event capture permissions.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFF94A3B8)
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        // Keyboard Capture: Accessibility Service
+                        Card(
+                            modifier = Modifier
+                                .weight(1f)
+                                .border(1.dp, if (isAccessibilityConnected) StatusEmerald else SlateBorder, RoundedCornerShape(10.dp)),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A))
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(imageVector = Icons.Default.Keyboard, contentDescription = null, tint = ElectricBlue, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Keyboard Capture", fontWeight = FontWeight.Bold, color = Color.White, style = MaterialTheme.typography.bodyMedium)
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                StatusBadge(
+                                    text = if (isAccessibilityConnected) "Service Connected" else "Action Required",
+                                    color = if (isAccessibilityConnected) StatusEmerald else StatusAmber,
+                                    showDot = true
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = "VitualEmu uses this service ONLY to capture physical keyboard key presses while games are running. No screen content is read, stored, or transmitted.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFF94A3B8),
+                                    fontSize = 11.sp
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Button(
+                                    onClick = {
+                                        try {
+                                            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+                                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                            }
+                                            context.startActivity(intent)
+                                        } catch (_: Throwable) {
+                                            viewModel.showFeedback("Could not open Accessibility Settings directly")
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (isAccessibilityConnected) Color(0xFF334155) else ElectricBlue,
+                                        contentColor = if (isAccessibilityConnected) Color.White else MidnightBlue
+                                    ),
+                                    shape = RoundedCornerShape(6.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(
+                                        if (isAccessibilityConnected) "Accessibility Enabled" else "Open Accessibility Settings",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            }
+                        }
+
+                        // Mouse Capture: Shizuku getevent
+                        Card(
+                            modifier = Modifier
+                                .weight(1f)
+                                .border(1.dp, if (captureStatus.mouseSource != CaptureSource.NONE) StatusEmerald else SlateBorder, RoundedCornerShape(10.dp)),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A))
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(imageVector = Icons.Default.Mouse, contentDescription = null, tint = ElectricBlue, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Mouse Capture (FPS Look)", fontWeight = FontWeight.Bold, color = Color.White, style = MaterialTheme.typography.bodyMedium)
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                StatusBadge(
+                                    text = if (captureStatus.mouseSource != CaptureSource.NONE) "getevent Active" else "Requires Shizuku",
+                                    color = if (captureStatus.mouseSource != CaptureSource.NONE) StatusEmerald else StatusAmber,
+                                    showDot = true
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = "Captures raw relative mouse movement (EV_REL) for 360° camera control via Shizuku shell. Works without root or stealing game focus.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFF94A3B8),
+                                    fontSize = 11.sp
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "Status: ${captureStatus.detailMessage}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFFCBD5E1),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
                     }
                 }
             }

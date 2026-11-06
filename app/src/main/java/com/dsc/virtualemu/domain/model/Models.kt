@@ -206,6 +206,7 @@ data class PreflightResult(
     val overlayReady: Boolean,
     val devicesConnected: Boolean,
     val profileValid: Boolean,
+    val captureReady: Boolean = true,
     val warnings: List<String> = emptyList(),
     val blockingErrors: List<String> = emptyList()
 )

@@ -13,6 +13,15 @@ import com.dsc.virtualemu.domain.mapping.KeymapCfgParser
 import com.dsc.virtualemu.domain.mapping.KeymapExportManager
 import com.dsc.virtualemu.domain.mapping.ParsedCfgData
 import com.dsc.virtualemu.domain.model.BridgeHealthState
+import com.dsc.virtualemu.runtime.capture.CaptureSource
+import com.dsc.virtualemu.runtime.capture.CaptureSourceStatus
+import com.dsc.virtualemu.runtime.capture.CaptureState
+import com.dsc.virtualemu.runtime.capture.CaptureStateManager
+import com.dsc.virtualemu.runtime.capture.PhysicalInputEvent
+import com.dsc.virtualemu.runtime.capture.PhysicalInputRouter
+import com.dsc.virtualemu.runtime.capture.PhysicalInputType
+import com.dsc.virtualemu.runtime.capture.ShizukuInputCaptureService
+import com.dsc.virtualemu.runtime.capture.VitualEmuAccessibilityService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -71,6 +80,17 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
     val mouseLookEngine = MouseLookEngine(multiTouchDispatcher)
     val macroEngine = MacroEngine(multiTouchDispatcher, viewModelScope)
     val keymapEngine = KeymapTranslationEngine(multiTouchDispatcher, mouseLookEngine, macroEngine)
+
+    // ── Physical Input Capture Subsystem ──
+    val captureStateManager = CaptureStateManager { reason ->
+        viewModelScope.launch { keymapEngine.neutralizeAll(reason) }
+    }
+    private val inputRouter = PhysicalInputRouter(captureStateManager)
+    private val shizukuCapture = ShizukuInputCaptureService()
+    val captureState: StateFlow<CaptureState> = captureStateManager.state
+    val captureSourceStatus: StateFlow<CaptureSourceStatus> = captureStateManager.sourceStatus
+    val accessibilityServiceConnected: StateFlow<Boolean> =
+        VitualEmuAccessibilityService.eventBridge.isServiceConnected
 
     val allSavedGames: StateFlow<List<Game>> = repository.getAllGames()
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
@@ -182,12 +202,34 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
             showFeedback(reason)
         }
 
-        // Wire system overlay physical capture callbacks into KeymapTranslationEngine & MouseLookEngine
-        PlayModeOverlayRuntimeBridge.onPhysicalKeyCaptured = { keyCode, isDown ->
-            dispatchSandboxKeyEvent(keyCode, isDown)
+        // ── Wire real physical input capture pipeline ──
+        // AccessibilityService keyboard capture: the service invokes this consumer for each key event.
+        // Return true for mapped keys (consume to prevent double-input), false for unmapped.
+        VitualEmuAccessibilityService.eventBridge.keyEventConsumer = { event ->
+            val forwarded = inputRouter.onRawEvent(event)
+            // Consume only if we actually forwarded (i.e., the key is processed by our mapping engine)
+            forwarded && isKeyMapped(event.keyCode)
         }
-        PlayModeOverlayRuntimeBridge.onPhysicalMouseDeltaCaptured = { dx, dy ->
-            dispatchSandboxMouseDelta(dx, dy)
+
+        // Shizuku getevent mouse/keyboard capture: events arrive on IO thread
+        shizukuCapture.onEventsReceived = { events ->
+            for (event in events) {
+                inputRouter.onRawEvent(event)
+            }
+        }
+
+        // Consume routed events and dispatch to the mapping engine + mouse look engine
+        viewModelScope.launch {
+            inputRouter.events.collect { event ->
+                dispatchPhysicalInputEvent(event)
+            }
+        }
+
+        // Monitor AccessibilityService connection state to update capture readiness
+        viewModelScope.launch {
+            VitualEmuAccessibilityService.eventBridge.isServiceConnected.collect { connected ->
+                refreshCaptureReadiness()
+            }
         }
         PlayModeOverlayRuntimeBridge.onToggleShootingModeRequested = {
             toggleShootingMode()
@@ -690,14 +732,17 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
             hasOverlayPermission = checkOverlayPermission(),
             deviceManager = deviceManager,
             game = _activeGame.value,
-            profile = _activeProfile.value
+            profile = _activeProfile.value,
+            captureSourceStatus = captureStateManager.sourceStatus.value
         )
     }
 
     fun startPlayMode(): Boolean {
         val context = getApplication<Application>()
         if (sessionState.value == SessionState.ACTIVE) {
+            stopInputCapture()
             sessionManager.pauseSession()
+            PlayModeOverlayRuntimeBridge.updateCaptureState(CaptureState.PAUSED)
             PlayModeOverlayService.stop(context)
             viewModelScope.launch {
                 keymapEngine.neutralizeAll("play_mode_paused")
@@ -716,6 +761,8 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
             started = sessionManager.startSession(activeBridge)
         }
         if (started) {
+            startInputCapture()
+            PlayModeOverlayRuntimeBridge.updateCaptureState(captureStateManager.state.value)
             PlayModeOverlayService.start(context)
             showFeedback("Play Mode Activated! Floating HUD & Multi-Touch Engine active.")
         } else {
@@ -882,6 +929,8 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun emergencySafeStop(reason: String = "User Emergency Safe-Stop") {
         val context = getApplication<Application>()
+        stopInputCapture()
+        PlayModeOverlayRuntimeBridge.updateCaptureState(CaptureState.NOT_CONFIGURED)
         PlayModeOverlayService.stop(context)
         viewModelScope.launch {
             keymapEngine.neutralizeAll("emergency_safe_stop")
@@ -892,6 +941,8 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun suspendSessionPointers(reason: String = "Game Scoped Overlay Suspended") {
+        captureStateManager.pauseCapturing(reason)
+        PlayModeOverlayRuntimeBridge.updateCaptureState(CaptureState.PAUSED)
         viewModelScope.launch {
             keymapEngine.neutralizeAll(reason)
         }
@@ -900,6 +951,8 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun onFocusLoss() {
+        captureStateManager.pauseCapturing("window_focus_loss")
+        PlayModeOverlayRuntimeBridge.updateCaptureState(CaptureState.PAUSED)
         viewModelScope.launch {
             keymapEngine.neutralizeAll("window_focus_loss")
         }
@@ -959,8 +1012,94 @@ class VitualEmuViewModel(application: Application) : AndroidViewModel(applicatio
         showFeedback("Local diagnostics log reset.")
     }
 
+    // ── Physical Input Capture Control ──
+
+    /**
+     * Dispatch a captured physical input event to the appropriate engine.
+     * Key events → KeymapTranslationEngine, mouse deltas → MouseLookEngine.
+     */
+    private fun dispatchPhysicalInputEvent(event: PhysicalInputEvent) {
+        when (event.type) {
+            PhysicalInputType.KEY_DOWN, PhysicalInputType.KEY_UP -> {
+                dispatchSandboxKeyEvent(event.keyCode, event.isDown)
+            }
+            PhysicalInputType.MOUSE_BUTTON_DOWN, PhysicalInputType.MOUSE_BUTTON_UP -> {
+                dispatchSandboxKeyEvent(event.keyCode, event.isDown)
+            }
+            PhysicalInputType.MOUSE_MOVE -> {
+                val screenW = mouseLookEngine.state.value.screenWidthPx.coerceAtLeast(1).toFloat()
+                val screenH = mouseLookEngine.state.value.screenHeightPx.coerceAtLeast(1).toFloat()
+                val normDx = event.deltaX / screenW
+                val normDy = event.deltaY / screenH
+                dispatchSandboxMouseDelta(normDx, normDy)
+            }
+            PhysicalInputType.MOUSE_WHEEL -> {
+                // Wheel events can be mapped to scroll or zoom actions
+                diagnostics.recordTouchDispatch(0L, "MOUSE_WHEEL(${event.wheelDelta})")
+            }
+            else -> { /* DEVICE_CONNECTED/DISCONNECTED handled by DeviceManager */ }
+        }
+    }
+
+    /**
+     * Check if a keyCode has a mapping in the active profile (used to decide
+     * whether to consume the key in AccessibilityService).
+     */
+    private fun isKeyMapped(keyCode: Int): Boolean {
+        val profile = _activeProfile.value ?: return false
+        val cfg = profile.mouseLookConfig
+        // Check toggle key, free-look key, WASD, and all mappings
+        if (keyCode == cfg.toggleKeyCode || keyCode == cfg.freeLookKeyCode) return true
+        if (keyCode in setOf(51, 47, 29, 32)) return true // W, S, A, D
+        return profile.mappings.any { it.keyCode == keyCode || it.altKeyCode == keyCode } ||
+               profile.macros.any { it.triggerKeyCode == keyCode }
+    }
+
+    /**
+     * Refresh capture source readiness based on current AccessibilityService and Shizuku state.
+     */
+    fun refreshCaptureReadiness() {
+        val accessibilityConnected = VitualEmuAccessibilityService.eventBridge.isServiceConnected.value
+        val shizukuAvailable = shizukuCapture.checkAvailability()
+        captureStateManager.evaluateReadiness(accessibilityConnected, shizukuAvailable)
+    }
+
+    /**
+     * Start the physical input capture pipeline.
+     * Called when Play Mode starts.
+     */
+    fun startInputCapture() {
+        refreshCaptureReadiness()
+        val status = captureStateManager.sourceStatus.value
+
+        // Start Shizuku getevent for mouse capture
+        if (status.mouseSource == CaptureSource.SHIZUKU_GETEVENT) {
+            val devices = shizukuCapture.enumerateDevices()
+            val mouseDevs = devices.filter { it.hasRelAxes }
+            val keyDevs = devices.filter { it.hasKeys }
+            val captureKbViaShizuku = !status.accessibilityServiceEnabled
+            shizukuCapture.startCapture(mouseDevs, keyDevs, captureKbViaShizuku)
+        }
+
+        captureStateManager.startCapturing()
+        diagnostics.recordTouchDispatch(0L, "INPUT_CAPTURE_STARTED: ${status.detailMessage}")
+    }
+
+    /**
+     * Stop the physical input capture pipeline.
+     * Called when Play Mode stops.
+     */
+    fun stopInputCapture() {
+        captureStateManager.stopCapturing("Play Mode stopped")
+        shizukuCapture.stopCapture()
+        inputRouter.reset()
+        diagnostics.recordTouchDispatch(0L, "INPUT_CAPTURE_STOPPED")
+    }
+
     override fun onCleared() {
         super.onCleared()
+        shizukuCapture.shutdown()
+        VitualEmuAccessibilityService.eventBridge.keyEventConsumer = null
         deviceManager.unregister()
         activeBridge.shutdown()
         HeldInputRegistry.releaseAll()

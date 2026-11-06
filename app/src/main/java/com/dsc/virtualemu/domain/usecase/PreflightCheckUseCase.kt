@@ -8,6 +8,8 @@ import com.dsc.virtualemu.domain.model.Game
 import com.dsc.virtualemu.domain.model.PreflightResult
 import com.dsc.virtualemu.domain.model.Profile
 import com.dsc.virtualemu.domain.validation.ValidationRules
+import com.dsc.virtualemu.runtime.capture.CaptureSource
+import com.dsc.virtualemu.runtime.capture.CaptureSourceStatus
 
 class PreflightCheckUseCase {
     operator fun invoke(
@@ -15,7 +17,8 @@ class PreflightCheckUseCase {
         hasOverlayPermission: Boolean,
         connectedDevices: List<DeviceInfo>,
         selectedGame: Game?,
-        activeProfile: Profile?
+        activeProfile: Profile?,
+        captureSourceStatus: CaptureSourceStatus? = null
     ): PreflightResult {
         val blockingErrors = mutableListOf<String>()
         val warnings = mutableListOf<String>()
@@ -36,6 +39,24 @@ class PreflightCheckUseCase {
             warnings.add("No physical keyboard or mouse detected. Input translation requires connected peripherals.")
         } else if (!hasKeyboard) {
             warnings.add("No physical keyboard detected. Only mouse events can be captured.")
+        }
+
+        var captureReady = true
+        if (captureSourceStatus != null) {
+            val hasKbCapture = captureSourceStatus.keyboardSource != CaptureSource.NONE
+            val hasMouseCapture = captureSourceStatus.mouseSource != CaptureSource.NONE
+
+            if (!hasKbCapture && !hasMouseCapture) {
+                captureReady = false
+                warnings.add("No physical input capture source active. Enable Accessibility Service for keyboard or run Shizuku for mouse.")
+            } else {
+                if (hasKeyboard && !hasKbCapture) {
+                    warnings.add("Keyboard connected but no keyboard capture source active. Enable Accessibility Service.")
+                }
+                if (hasMouse && !hasMouseCapture) {
+                    warnings.add("Mouse connected but Shizuku is not running. Relative mouse-look requires Shizuku getevent.")
+                }
+            }
         }
 
         if (selectedGame == null) {
@@ -67,6 +88,7 @@ class PreflightCheckUseCase {
             overlayReady = hasOverlayPermission,
             devicesConnected = hasKeyboard || hasMouse,
             profileValid = profileValid,
+            captureReady = captureReady,
             warnings = warnings,
             blockingErrors = blockingErrors
         )

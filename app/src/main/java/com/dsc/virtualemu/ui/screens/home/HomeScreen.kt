@@ -90,6 +90,8 @@ fun HomeScreen(
     val activeProfile by viewModel.activeProfile.collectAsState()
     val bridgeStatus by viewModel.bridgeStatus.collectAsState()
     val connectedDevices by viewModel.connectedDevices.collectAsState()
+    val captureStatus by viewModel.captureSourceStatus.collectAsState()
+    val isAccessibilityConnected by viewModel.accessibilityServiceConnected.collectAsState()
 
     val lifecycleOwner = LocalLifecycleOwner.current
     val pendingStartGamePkg by viewModel.pendingStartGamePkg.collectAsState()
@@ -168,7 +170,7 @@ fun HomeScreen(
                     )
                 }
 
-                // Top-Center: Permission Required Banner (Hides automatically when all prerequisites are satisfied)
+                // Top-Center: Permission / Setup Required Banner
                 val hasBridge = bridgeStatus.state == BridgeHealthState.CONNECTED && bridgeStatus.isAuthorized
                 val hasOverlay = viewModel.checkOverlayPermission()
                 val isFullyAuthorized = hasBridge && hasOverlay
@@ -208,15 +210,50 @@ fun HomeScreen(
                             )
                         }
                     }
+                } else if (!isAccessibilityConnected && hasKeyboard) {
+                    // Inform user that keyboard is connected but accessibility capture service is not enabled
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(Color(0xFFF59E0B).copy(alpha = 0.9f))
+                            .clickable(onClick = onNavigateToActivation)
+                            .padding(horizontal = 16.dp, vertical = 7.dp)
+                            .testTag("capture_setup_banner")
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Keyboard,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Text(
+                                text = "Keyboard Capture Setup",
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Icon(
+                                imageVector = Icons.Default.ChevronRight,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(15.dp)
+                            )
+                        }
+                    }
                 }
 
                 // Top-Right: Mouse and Keyboard Status Badges
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     // Mouse Badge
+                    val mouseActive = hasMouse && bridgeStatus.isAuthorized
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(16.dp))
-                            .background(if (hasMouse) Color(0xFF10B981) else Color(0xFF6366F1))
+                            .background(if (mouseActive) Color(0xFF10B981) else if (hasMouse) Color(0xFFF59E0B) else Color(0xFF6366F1))
                             .padding(horizontal = 10.dp, vertical = 6.dp)
                     ) {
                         Row(
@@ -230,7 +267,7 @@ fun HomeScreen(
                                 modifier = Modifier.size(14.dp)
                             )
                             Text(
-                                text = if (hasMouse) "Connected" else "Disconnected",
+                                text = if (hasMouse) (if (mouseActive) "Mouse Active" else "Mouse (No Shizuku)") else "Mouse Off",
                                 fontSize = 11.sp,
                                 color = Color.White,
                                 fontWeight = FontWeight.Bold
@@ -239,10 +276,11 @@ fun HomeScreen(
                     }
 
                     // Keyboard Badge
+                    val kbActive = hasKeyboard && isAccessibilityConnected
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(16.dp))
-                            .background(if (hasKeyboard) Color(0xFF10B981) else Color(0xFF6366F1))
+                            .background(if (kbActive) Color(0xFF10B981) else if (hasKeyboard) Color(0xFFF59E0B) else Color(0xFF6366F1))
                             .padding(horizontal = 10.dp, vertical = 6.dp)
                     ) {
                         Row(
@@ -256,7 +294,7 @@ fun HomeScreen(
                                 modifier = Modifier.size(14.dp)
                             )
                             Text(
-                                text = if (hasKeyboard) "Connected" else "Disconnected",
+                                text = if (hasKeyboard) (if (kbActive) "Keyboard Active" else "Keyboard (Setup Req)") else "Keyboard Off",
                                 fontSize = 11.sp,
                                 color = Color.White,
                                 fontWeight = FontWeight.Bold
